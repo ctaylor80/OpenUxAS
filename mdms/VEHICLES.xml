@@ -80,7 +80,7 @@
 
         </Struct>
 		
-		<!-- Provides information regarding a sensor's configuration items. -->
+        <!-- Provides information regarding a sensor's configuration items. -->
         <Struct Name="StationarySensorConfiguration" Extends="CMASI/EntityConfiguration">
             
         </Struct>
