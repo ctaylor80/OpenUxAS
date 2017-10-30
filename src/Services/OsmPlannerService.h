@@ -176,8 +176,7 @@ public:
 
 
 protected:
-    bool bProcessRoutePlanRequest(const std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest,
-            std::shared_ptr<uxas::messages::route::RoutePlanResponse>& routePlanResponse);
+    std::shared_ptr<messages::route::RoutePlanResponse> processRoutePlanRequest(const std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest);
     bool bProcessEgressRequest(const std::shared_ptr<uxas::messages::route::EgressRouteRequest>& egressRequest,
             std::shared_ptr<uxas::messages::route::EgressRouteResponse>& egressResponse);
     bool isProcessRoadPointsRequest(const std::shared_ptr<uxas::messages::route::RoadPointsRequest>& roadPointsRequest,
