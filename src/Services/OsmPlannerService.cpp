@@ -227,11 +227,6 @@ OsmPlannerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicatio
         auto config = std::static_pointer_cast<afrl::vehicles::GroundVehicleConfiguration>(receivedLmcpMessage->m_object);
         m_entityConfigurations[config->getID()] = config;
     }
-    else if (afrl::cmasi::isAirVehicleConfiguration(receivedLmcpMessage->m_object))
-    {
-        auto config = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(receivedLmcpMessage->m_object);
-        m_entityConfigurations[config->getID()] = config;
-    }
     else
     {
         CERR_FILE_LINE_MSG("WARNING::Unknown Message Type Encountered ptr_Object->getLmcpTypeName()[" << receivedLmcpMessage->m_object->getFullLmcpTypeName() << "]")
