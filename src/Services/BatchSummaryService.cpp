@@ -499,7 +499,7 @@ namespace uxas
                     sendSharedLmcpObjectBroadcastMessage(pRequest);
                 }
             }
-
+        }
 
         void BatchSummaryService::UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, std::vector<afrl::cmasi::Waypoint*> waypoints)
         {
@@ -759,8 +759,6 @@ namespace uxas
             {
                 poly->reverse();
             }
-            for (int i = 0; i < poly.n(); i++)
-            return ret;
             
             return poly;
         }

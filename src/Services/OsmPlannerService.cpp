@@ -177,16 +177,15 @@ OsmPlannerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicatio
 
             auto routePlanResponse = std::make_shared<uxas::messages::route::RoutePlanResponse>();
             routePlanResponse->setResponseID(request->getRequestID());
-            if (bProcessRoutePlanRequest(request, routePlanResponse))
-            {
-                auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(routePlanResponse);
-                sendSharedLmcpObjectLimitedCastMessage(
-                                                       getNetworkClientUnicastAddress(
-                                                                                      receivedLmcpMessage->m_attributes->getSourceEntityId(),
-                                                                                      receivedLmcpMessage->m_attributes->getSourceServiceId()
-                                                                                      ),
-                                                       newResponse);
-            }
+            bProcessRoutePlanRequest(request, routePlanResponse);
+            auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(routePlanResponse);
+            sendSharedLmcpObjectLimitedCastMessage(
+                                                   getNetworkClientUnicastAddress(
+                                                                                  receivedLmcpMessage->m_attributes->getSourceEntityId(),
+                                                                                  receivedLmcpMessage->m_attributes->getSourceServiceId()
+                                                                                  ),
+                                                   newResponse);
+
         }
     }
     else if (uxas::messages::route::isRoadPointsRequest(receivedLmcpMessage->m_object))
@@ -279,12 +278,12 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
                                                  std::shared_ptr<uxas::messages::route::RoutePlanResponse>& routePlanResponse)
 {
     bool isSuccess(true);
+    routePlanResponse->setAssociatedTaskID(routePlanRequest->getAssociatedTaskID());
+    routePlanResponse->setOperatingRegion(routePlanRequest->getOperatingRegion());
+    routePlanResponse->setVehicleID(routePlanRequest->getVehicleID());
 
     if (m_graph && m_planningIndexVsNodeId && m_idVsNode)
     {
-        routePlanResponse->setAssociatedTaskID(routePlanRequest->getAssociatedTaskID());
-        routePlanResponse->setOperatingRegion(routePlanRequest->getOperatingRegion());
-        routePlanResponse->setVehicleID(routePlanRequest->getVehicleID());
 
         // extract route speed
         double speed = 1.0; // default to just distance
