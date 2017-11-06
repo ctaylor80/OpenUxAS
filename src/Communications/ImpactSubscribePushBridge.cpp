@@ -194,17 +194,17 @@ namespace uxas
         {
           UXAS_LOG_INFORM(s_typeName(), "::processReceivedSerializedLmcpMessage processing message with source service ID ", receivedLmcpMessage->getMessageAttributesReference()->getSourceServiceId());
 
-		  //convert to LMCP to get series name
-		  std::string message = receivedLmcpMessage->getPayload();
-		  avtas::lmcp::ByteBuffer byteBuffer;
-		  byteBuffer.allocate(message.size());
-		  byteBuffer.put(reinterpret_cast<const uint8_t*>(message.c_str()), message.size());
-		  byteBuffer.rewind();
+          //convert to LMCP to get series name
+          std::string message = receivedLmcpMessage->getPayload();
+          avtas::lmcp::ByteBuffer byteBuffer;
+          byteBuffer.allocate(message.size());
+          byteBuffer.put(reinterpret_cast<const uint8_t*>(message.c_str()), message.size());
+          byteBuffer.rewind();
 
-		  std::shared_ptr<avtas::lmcp::Object> ptr_Object;
-		  ptr_Object.reset(avtas::lmcp::Factory::getObject(byteBuffer));
+          std::shared_ptr<avtas::lmcp::Object> ptr_Object;
+          ptr_Object.reset(avtas::lmcp::Factory::getObject(byteBuffer));
 
-		  std::string seriesName = ptr_Object->getSeriesName();
+          std::string seriesName = ptr_Object->getSeriesName();
 
           std::locale loc;
           //convert seriesName to uppercase
@@ -245,7 +245,7 @@ namespace uxas
           std::string key = n_ZMQ::s_recv(*subscriber);
           std::string message = n_ZMQ::s_recv(*subscriber);
 
-		  //don't care about key. Construct header from valid LMCP.
+          //don't care about key. Construct header from valid LMCP.
 
 		  avtas::lmcp::ByteBuffer byteBuffer;
 		  byteBuffer.allocate(message.size());
@@ -255,10 +255,10 @@ namespace uxas
 		  std::shared_ptr<avtas::lmcp::Object> ptr_Object;
 		  ptr_Object.reset(avtas::lmcp::Factory::getObject(byteBuffer));
 
-		  auto header = ptr_Object->getFullLmcpTypeName();
+          auto header = ptr_Object->getFullLmcpTypeName();
 		  std::unique_ptr<uxas::communications::data::AddressedAttributedMessage> recvdAddAttMsg = uxas::stduxas::make_unique<uxas::communications::data::AddressedAttributedMessage>();
 
-		  recvdAddAttMsg->setAddressAttributesAndPayload(header, "lmcp", header, "fusion", externalID, "1", message);
+          recvdAddAttMsg->setAddressAttributesAndPayload(header, "lmcp", header, "fusion", externalID, "1", message);
 
           // send message to the external entity
           if (recvdAddAttMsg->isValid())

@@ -33,12 +33,10 @@
 #include "afrl/impact/AreaOfInterest.h"
 
 #include "afrl/cmasi/ServiceStatus.h"
-#include "afrl/cmasi/AirVehicleConfiguration.h"
-#include "afrl/vehicles/GroundVehicleConfiguration.h"
-#include "afrl/vehicles/SurfaceVehicleConfiguration.h"
-#include "afrl/cmasi/AirVehicleState.h"
-#include "afrl/vehicles/GroundVehicleState.h"
-#include "afrl/vehicles/SurfaceVehicleState.h"
+#include "afrl/cmasi/EntityConfiguration.h"
+#include "afrl/cmasi/EntityConfigurationDescendants.h"
+#include "afrl/cmasi/EntityState.h"
+#include "afrl/cmasi/EntityStateDescendants.h"
 #include "afrl/cmasi/RemoveTasks.h"
 #include "afrl/cmasi/KeepInZone.h"
 #include "afrl/cmasi/KeepOutZone.h"
@@ -106,16 +104,16 @@ AutomationRequestValidatorService::configure(const pugi::xml_node & ndComponent)
 
     //ENTITY CONFIGURATIONS
     addSubscriptionAddress(afrl::cmasi::EntityConfiguration::Subscription);
-    for (auto config : afrl::cmasi::EntityConfigurationDescendants())
-    {
-        addSubscriptionAddress(config);
-    }
+    std::vector< std::string > childconfigs = afrl::cmasi::EntityConfigurationDescendants();
+    for(auto child : childconfigs)
+        addSubscriptionAddress(child);
+    
     // ENTITY STATES
     addSubscriptionAddress(afrl::cmasi::EntityState::Subscription);
-    for (auto state : afrl::cmasi::EntityStateDescendants())
-    {
-        addSubscriptionAddress(state);
-    }
+    std::vector< std::string > childstates = afrl::cmasi::EntityStateDescendants();
+    for(auto child : childstates)
+        addSubscriptionAddress(child);
+    
 
     // TASKS
 	addSubscriptionAddress(afrl::cmasi::RemoveTasks::Subscription);
@@ -162,14 +160,16 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
     auto entityConfiguration = std::dynamic_pointer_cast<afrl::cmasi::EntityConfiguration>(receivedLmcpMessage->m_object);
 
     bool isMessageHandled{ false };
-    if (entityState)
+    auto entityConfig = std::dynamic_pointer_cast<afrl::cmasi::EntityConfiguration>(receivedLmcpMessage->m_object);
+    auto entityState = std::dynamic_pointer_cast<afrl::cmasi::EntityState>(receivedLmcpMessage->m_object);
+    if ( entityConfig )
     {
-        m_availableStateEntityIds.insert(entityState->getID());
+        m_availableConfigurationEntityIds.insert(entityConfig->getID());
         isMessageHandled = true;
     }
-    else if (entityConfiguration)
+    else if ( entityState )
     {
-        m_availableConfigurationEntityIds.insert(entityConfiguration->getID());
+        m_availableStateEntityIds.insert(entityState->getID());
         isMessageHandled = true;
     }
     else if (uxas::messages::task::isTaskInitialized(receivedLmcpMessage->m_object.get()))

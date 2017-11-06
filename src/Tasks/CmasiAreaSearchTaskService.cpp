@@ -407,7 +407,6 @@ bool CmasiAreaSearchTaskService::isCalculateRasterScanRoute(std::shared_ptr<Task
                                                        (*itpPoint)->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
                                                        taskOptionClass->m_altitude_m, 0.0);
             searchAreaBoundary.push_back(boundaryPosition);
-
             if (boundaryPosition.m_north_m > northMax_m)
             {
                 northMax_m = boundaryPosition.m_north_m;
@@ -424,7 +423,7 @@ bool CmasiAreaSearchTaskService::isCalculateRasterScanRoute(std::shared_ptr<Task
             {
                 eastMin_m = boundaryPosition.m_east_m;
             }
-        } //for(std::vector<afrl::cmasi::Location2D*> itpPoint=szCountPoints<m_areaSearchTask->getSe
+        }
         double centerNorth_m = (northMax_m - northMin_m) / 2.0;
         double centerEast_m = (eastMax_m - eastMin_m) / 2.0;
         centerPosition.reset(new n_FrameworkLib::CPosition(centerNorth_m, centerEast_m, taskOptionClass->m_altitude_m));

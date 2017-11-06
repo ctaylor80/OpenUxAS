@@ -18,12 +18,11 @@
 #include "TaskManagerService.h"
 #include "TaskServiceBase.h"
 
-#include "afrl/cmasi/AirVehicleConfiguration.h"
-#include "afrl/vehicles/GroundVehicleConfiguration.h"
-#include "afrl/vehicles/SurfaceVehicleConfiguration.h"
-#include "afrl/cmasi/AirVehicleState.h"
-#include "afrl/vehicles/GroundVehicleState.h"
-#include "afrl/vehicles/SurfaceVehicleState.h"
+
+#include "afrl/cmasi/EntityConfiguration.h"
+#include "afrl/cmasi/EntityConfigurationDescendants.h"
+#include "afrl/cmasi/EntityState.h"
+#include "afrl/cmasi/EntityStateDescendants.h"
 #include "afrl/cmasi/AutomationRequest.h"
 #include "afrl/cmasi/AutomationResponse.h"
 #include "uxas/messages/task/UniqueAutomationRequest.h"
@@ -135,15 +134,17 @@ TaskManagerService::configure(const pugi::xml_node& ndComponent)
     } //for (pugi::xml_node ndCurrent = ndConfigurationEntries.first_child(); ndCurrent; ndCurrent = ndCurrent.next_sibling())
 
     addSubscriptionAddress(afrl::cmasi::RemoveTasks::Subscription);
-
-
+    
+    //ENTITY CONFIGURATIONS
+    std::vector< std::string > childconfigs = afrl::cmasi::EntityConfigurationDescendants();
+    for(auto child : childconfigs)
+        addSubscriptionAddress(child);
+    
+    // ENTITY STATES
     addSubscriptionAddress(afrl::cmasi::EntityState::Subscription);
-	for (auto descendant : afrl::cmasi::EntityStateDescendants())
-		addSubscriptionAddress(descendant);
-
-    addSubscriptionAddress(afrl::cmasi::EntityConfiguration::Subscription);
-	for (auto descendant : afrl::cmasi::EntityConfigurationDescendants())
-		addSubscriptionAddress(descendant);
+    std::vector< std::string > childstates = afrl::cmasi::EntityStateDescendants();
+    for(auto child : childstates)
+        addSubscriptionAddress(child);
 
     addSubscriptionAddress(afrl::cmasi::MissionCommand::Subscription);
     addSubscriptionAddress(afrl::cmasi::AutomationResponse::Subscription);

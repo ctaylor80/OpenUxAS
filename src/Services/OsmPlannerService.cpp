@@ -48,9 +48,6 @@
 #define STRING_XML_METRICS_FILE "MetricsFile"
 
 
-#define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "PP_E-PP_E-PP_E OSM_Planner.:: " << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
-#define CERR_FILE_LINE_MSG(MESSAGE) std::cerr << "PP_E-PP_E-PP_E OSM_Planner.:: " << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cerr.flush();
-
 #define CIRCLE_BOUNDARY_INCREMENT (_PI_O_10)
 
 namespace uxas
@@ -129,7 +126,7 @@ OsmPlannerService::configure(const pugi::xml_node& ndComponent)
     if (!ndComponent.attribute(STRING_XML_OSM_FILE).empty())
     {
         m_osmFileName = ndComponent.attribute(STRING_XML_OSM_FILE).value();
-        COUT_FILE_LINE_MSG("**** Reading and processing OSM File [" << m_osmFileName << "] ****");
+        UXAS_LOG_INFORM("**** Reading and processing OSM File [" << m_osmFileName << "] ****");
 
         isSuccessful = isBuildRoadGraphWithOsm(m_osmFileName);
         if (!isSuccessful)
@@ -177,14 +174,19 @@ OsmPlannerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicatio
         //assumes only ground vehicles
         if (m_entityConfigurations.find(request->getVehicleID()) != m_entityConfigurations.end())
         {
-            auto response = processRoutePlanRequest(request);
 
-            sendSharedLmcpObjectLimitedCastMessage(
-                                                   getNetworkClientUnicastAddress(
-                                                                                  receivedLmcpMessage->m_attributes->getSourceEntityId(),
-                                                                                  receivedLmcpMessage->m_attributes->getSourceServiceId()
-                                                                                  ),
-                                                   response);
+            auto routePlanResponse = std::make_shared<uxas::messages::route::RoutePlanResponse>();
+            routePlanResponse->setResponseID(request->getRequestID());
+            if (bProcessRoutePlanRequest(request, routePlanResponse))
+            {
+                auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(routePlanResponse);
+                sendSharedLmcpObjectLimitedCastMessage(
+                                                       getNetworkClientUnicastAddress(
+                                                                                      receivedLmcpMessage->m_attributes->getSourceEntityId(),
+                                                                                      receivedLmcpMessage->m_attributes->getSourceServiceId()
+                                                                                      ),
+                                                       newResponse);
+            }
         }
     }
     else if (uxas::messages::route::isRoadPointsRequest(receivedLmcpMessage->m_object))
@@ -222,9 +224,14 @@ OsmPlannerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicatio
         auto config = std::static_pointer_cast<afrl::vehicles::GroundVehicleConfiguration>(receivedLmcpMessage->m_object);
         m_entityConfigurations[config->getID()] = config;
     }
+    else if (afrl::cmasi::isAirVehicleConfiguration(receivedLmcpMessage->m_object))
+    {
+        auto config = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(receivedLmcpMessage->m_object);
+        m_entityConfigurations[config->getID()] = config;
+    }
     else
     {
-        CERR_FILE_LINE_MSG("WARNING::Unknown Message Type Encountered ptr_Object->getLmcpTypeName()[" << receivedLmcpMessage->m_object->getFullLmcpTypeName() << "]")
+        UXAS_LOG_INFORM("WARNING::Unknown Message Type Encountered ptr_Object->getLmcpTypeName()[" << receivedLmcpMessage->m_object->getFullLmcpTypeName() << "]")
     }
     return (false); // always false implies never terminating service from here
 };
@@ -268,76 +275,67 @@ bool OsmPlannerService::bProcessEgressRequest(const std::shared_ptr<uxas::messag
     return true;
 }
 
-std::shared_ptr<messages::route::RoutePlanResponse> OsmPlannerService::processRoutePlanRequest(const std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest)
+bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest,
+                                                 std::shared_ptr<uxas::messages::route::RoutePlanResponse>& routePlanResponse)
 {
-    auto routePlanResponse = std::make_shared<uxas::messages::route::RoutePlanResponse>();
+    bool isSuccess(true);
 
-    routePlanResponse->setResponseID(routePlanRequest->getRequestID());
-    routePlanResponse->setAssociatedTaskID(routePlanRequest->getAssociatedTaskID());
-    routePlanResponse->setOperatingRegion(routePlanRequest->getOperatingRegion());
-    routePlanResponse->setVehicleID(routePlanRequest->getVehicleID());
-
-
-    // extract route speed
-    double speed = 1.0; // default to just distance
-    if (m_entityConfigurations.find(routePlanRequest->getVehicleID()) != m_entityConfigurations.end())
+    if (m_graph && m_planningIndexVsNodeId && m_idVsNode)
     {
-        speed = m_entityConfigurations[routePlanRequest->getVehicleID()]->getNominalSpeed();
-        if (speed < 1.0)
+        routePlanResponse->setAssociatedTaskID(routePlanRequest->getAssociatedTaskID());
+        routePlanResponse->setOperatingRegion(routePlanRequest->getOperatingRegion());
+        routePlanResponse->setVehicleID(routePlanRequest->getVehicleID());
+
+        // extract route speed
+        double speed = 1.0; // default to just distance
+        if (m_entityConfigurations.find(routePlanRequest->getVehicleID()) != m_entityConfigurations.end())
         {
-            speed = 1.0;
-        }
-    }
-
-    for (auto itRequest = routePlanRequest->getRouteRequests().begin();
-            itRequest != routePlanRequest->getRouteRequests().end();
-            itRequest++)
-    {
-        auto startTime = std::chrono::system_clock::now();
-
-        auto routePlan = new uxas::messages::route::RoutePlan;
-        routePlan->setRouteID((*itRequest)->getRouteID());
-        routePlan->setRouteCost(-1);
-
-        std::vector<int64_t> waypointNodeIds;
-
-        n_FrameworkLib::CPosition positionStart((*itRequest)->getStartLocation()->getLatitude() * n_Const::c_Convert::dDegreesToRadians(),
-                                                (*itRequest)->getStartLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
-                                                0.0, 0.0);
-        int64_t nodeIdStart(-1);
-        double lengthFromStartToNode(-1.0);
-
-        n_FrameworkLib::CPosition positionEnd((*itRequest)->getEndLocation()->getLatitude() * n_Const::c_Convert::dDegreesToRadians(),
-                                              (*itRequest)->getEndLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
-                                              0.0, 0.0);
-        int64_t nodeIdEnd(-1);
-        double lengthFromNodeToEnd(-1.0);
-
-        bool isFoundNodeIdStart = false;
-        bool isFoundNodeIdEnd = false;
-
-        if (m_graph && m_planningIndexVsNodeId && m_idVsNode)
-        {
-            // start node Id
-            isFoundNodeIdStart = isFindClosestNodeId(positionStart, m_cellVsPlanningNodeIds, nodeIdStart, lengthFromStartToNode);
-            // end node Id
-            isFoundNodeIdEnd = isFindClosestNodeId(positionEnd, m_cellVsPlanningNodeIds, nodeIdEnd, lengthFromNodeToEnd);
-        }
-
-        if (isFoundNodeIdStart && isFoundNodeIdEnd)
-        {
-            int32_t numberWaypoints(-1); // for metrics
-            int32_t pathCost(0);
-            std::deque<int64_t> pathNodeIds;
-            if (isFindShortestRoute(nodeIdStart, nodeIdEnd, pathCost, pathNodeIds))
+            speed = m_entityConfigurations[routePlanRequest->getVehicleID()]->getNominalSpeed();
+            if (speed < 1.0)
             {
+                speed = 1.0;
+            }
+        }
 
-                float routCost = (static_cast<float> (lengthFromStartToNode) +
-                        static_cast<float> (lengthFromNodeToEnd) +
-                        static_cast<float> (pathCost)) / speed;
-                routePlan->setRouteCost(routCost);
+        for (auto itRequest = routePlanRequest->getRouteRequests().begin();
+                itRequest != routePlanRequest->getRouteRequests().end();
+                itRequest++)
+        {
+            auto startTime = std::chrono::system_clock::now();
 
-                if (!routePlanRequest->getIsCostOnlyRequest())
+            std::vector<int64_t> waypointNodeIds;
+
+            n_FrameworkLib::CPosition positionStart((*itRequest)->getStartLocation()->getLatitude() * n_Const::c_Convert::dDegreesToRadians(),
+                                                    (*itRequest)->getStartLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
+                                                    0.0, 0.0);
+            int64_t nodeIdStart(-1);
+            double lengthFromStartToNode(-1.0);
+
+            n_FrameworkLib::CPosition positionEnd((*itRequest)->getEndLocation()->getLatitude() * n_Const::c_Convert::dDegreesToRadians(),
+                                                  (*itRequest)->getEndLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
+                                                  0.0, 0.0);
+            int64_t nodeIdEnd(-1);
+            double lengthFromNodeToEnd(-1.0);
+
+            // start node Id
+            bool isFoundNodeIdStart = isFindClosestNodeId(positionStart, m_cellVsPlanningNodeIds, nodeIdStart, lengthFromStartToNode);
+            // end node Id
+            bool isFoundNodeIdEnd = isFindClosestNodeId(positionEnd, m_cellVsPlanningNodeIds, nodeIdEnd, lengthFromNodeToEnd);
+            if (isFoundNodeIdStart && isFoundNodeIdEnd)
+            {
+                int32_t numberWaypoints(-1); // for metrics
+                int32_t pathCost(0);
+                std::deque<int64_t> pathNodeIds;
+                if (isFindShortestRoute(nodeIdStart, nodeIdEnd, pathCost, pathNodeIds))
+                {
+                    auto routePlan = new uxas::messages::route::RoutePlan;
+                    routePlan->setRouteID((*itRequest)->getRouteID());
+                    float routCost = (static_cast<float> (lengthFromStartToNode) +
+                            static_cast<float> (lengthFromNodeToEnd) +
+                            static_cast<float> (pathCost)) / speed;
+                    routePlan->setRouteCost(routCost * 1000); //convert to ms
+
+                    if (!routePlanRequest->getIsCostOnlyRequest())
                     {
                         int64_t waypointNumber(0);
 
@@ -397,14 +395,16 @@ std::shared_ptr<messages::route::RoutePlanResponse> OsmPlannerService::processRo
                                         }
                                         else
                                         {
-                                            CERR_FILE_LINE_MSG("bProcessRoutePlanRequest:: while building plan:: could not find node with the Id[" << *itNodeId << "]")
+                                            UXAS_LOG_ERROR("bProcessRoutePlanRequest:: while building plan:: could not find node with the Id[", *itNodeId, "]");
+                                            isSuccess = false;
                                             break;
                                         }
                                     }
                                 }
                                 else
                                 {
-                                    CERR_FILE_LINE_MSG("bProcessRoutePlanRequest:: while building plan:: could not find the planning edge for node Id's [" << *itPathNodeId << "] and [" << *itNextPathNodeId << "]")
+                                    UXAS_LOG_ERROR("bProcessRoutePlanRequest:: while building plan:: could not find the planning edge for node Id's [", *itPathNodeId, "] and [", *itNextPathNodeId, "]");
+                                    isSuccess = false;
                                     //break;
                                 }
                             }
@@ -432,7 +432,8 @@ std::shared_ptr<messages::route::RoutePlanResponse> OsmPlannerService::processRo
                                 }
                                 else
                                 {
-                                    CERR_FILE_LINE_MSG("bProcessRoutePlanRequest:: while building plan:: could not find node with the Id[" << *itPathNodeId << "]")
+                                    UXAS_LOG_ERROR("bProcessRoutePlanRequest:: while building plan:: could not find node with the Id[", *itPathNodeId, "]");
+                                    isSuccess = false;
                                     break;
                                 }
                             } //for(auto itPathNodeId=pathNodeIds.begin();itPathNodeId!=pathNodeIds.end();itPathNodeId++)
@@ -455,83 +456,85 @@ std::shared_ptr<messages::route::RoutePlanResponse> OsmPlannerService::processRo
                         routePlan->getWaypoints().push_back(waypoint);
                         waypoint = nullptr; // gave up ownership
                     }
-                numberWaypoints = routePlan->getWaypoints().size();
-
-            }
-            else
-            {
-                CERR_FILE_LINE_MSG("Error:: could not find route for RouteRequestId[" << (*itRequest)->getRouteID() << "].")
-            }
-
-            if (!m_shortestPathFileName.empty())
-            {
-                std::string shortestPathPathFileName;
-                if (uxas::common::utilities::c_FileSystemUtilities::bFindUniqueFileName(m_shortestPathFileName, m_strSavePath, shortestPathPathFileName))
+                    numberWaypoints = routePlan->getWaypoints().size();
+                    routePlanResponse->getRouteResponses().push_back(routePlan);
+                    routePlan = nullptr; //gave it up
+                }
+                else
                 {
-                    std::ofstream shortestPathStream(shortestPathPathFileName.c_str());
-                    shortestPathStream << "'node_id_1','edge_north_01','edge_east_01','edge_alt_01','node_id_2','edge_north_02','edge_east_02','edge_alt_02','edge_length_f'" << std::endl;
-                    auto itNodeOne = waypointNodeIds.begin();
-                    auto itNodeTwo = waypointNodeIds.begin();
-                    if (!waypointNodeIds.empty())
+                    UXAS_LOG_ERROR("Error:: could not find route for RouteRequestId[", (*itRequest)->getRouteID(), "].");
+                    isSuccess = false;
+                }
+
+                if (!m_shortestPathFileName.empty())
+                {
+                    std::string shortestPathPathFileName;
+                    if (uxas::common::utilities::c_FileSystemUtilities::bFindUniqueFileName(m_shortestPathFileName, m_strSavePath, shortestPathPathFileName))
                     {
-                        itNodeTwo++;
-                    }
-                    for (; itNodeTwo != waypointNodeIds.end(); itNodeOne++, itNodeTwo++)
-                    {
-                        auto itNode_1 = m_idVsNode->find(*itNodeOne);
-                        auto itNode_2 = m_idVsNode->find(*itNodeTwo);
-                        if ((itNode_1 != m_idVsNode->end()) &&
-                                (itNode_2 != m_idVsNode->end()))
+                        std::ofstream shortestPathStream(shortestPathPathFileName.c_str());
+                        shortestPathStream << "'node_id_1','edge_north_01','edge_east_01','edge_alt_01','node_id_2','edge_north_02','edge_east_02','edge_alt_02','edge_length_f'" << std::endl;
+                        auto itNodeOne = waypointNodeIds.begin();
+                        auto itNodeTwo = waypointNodeIds.begin();
+                        if (!waypointNodeIds.empty())
                         {
-
-                            shortestPathStream << *itNodeOne;
-                            shortestPathStream << ",";
-                            shortestPathStream << *(itNode_1->second);
-                            shortestPathStream << ",";
-                            shortestPathStream << *itNodeTwo;
-                            shortestPathStream << ",";
-                            shortestPathStream << *(itNode_2->second);
-                            shortestPathStream << ",";
-                            shortestPathStream << 0;
-                            shortestPathStream << std::endl;
+                            itNodeTwo++;
                         }
-                    }
-                    shortestPathStream.close();
-                } //if (uxas::common::utilities::c_FileSystemUtilities::bFindUniqueFileName(m_shortestPa ...
-            } //if(!m_shortestPathFileName.empty())
+                        for (; itNodeTwo != waypointNodeIds.end(); itNodeOne++, itNodeTwo++)
+                        {
+                            auto itNode_1 = m_idVsNode->find(*itNodeOne);
+                            auto itNode_2 = m_idVsNode->find(*itNodeTwo);
+                            if ((itNode_1 != m_idVsNode->end()) &&
+                                    (itNode_2 != m_idVsNode->end()))
+                            {
 
-            auto endTime = std::chrono::system_clock::now();
-            std::chrono::duration<double> elapsed_seconds = endTime - startTime;
-            m_processPlanTime_s = elapsed_seconds.count();
+                                shortestPathStream << *itNodeOne;
+                                shortestPathStream << ",";
+                                shortestPathStream << *(itNode_1->second);
+                                shortestPathStream << ",";
+                                shortestPathStream << *itNodeTwo;
+                                shortestPathStream << ",";
+                                shortestPathStream << *(itNode_2->second);
+                                shortestPathStream << ",";
+                                shortestPathStream << 0;
+                                shortestPathStream << std::endl;
+                            }
+                        }
+                        shortestPathStream.close();
+                    } //if (uxas::common::utilities::c_FileSystemUtilities::bFindUniqueFileName(m_shortestPa ...
+                } //if(!m_shortestPathFileName.empty())
 
-            if (!m_searchMetricsFileName.empty())
+                auto endTime = std::chrono::system_clock::now();
+                std::chrono::duration<double> elapsed_seconds = endTime - startTime;
+                m_processPlanTime_s = elapsed_seconds.count();
+
+                if (!m_searchMetricsFileName.empty())
+                {
+                    std::ofstream metricsStream(m_searchMetricsFileName.c_str(), std::ios::app);
+                    metricsStream << m_numberHighways << ", "
+                            << m_numberNodes << ", "
+                            << m_numberPlanningNodes << ", "
+                            << m_numberPlanningEdges << ", "
+                            << m_processMapTime_s << ", "
+                            << nodeIdStart << ", "
+                            << nodeIdEnd << ", "
+                            << pathNodeIds.size() << ", "
+                            << numberWaypoints << ", "
+                            << pathCost << ", "
+                            << m_searchTime_s << ", "
+                            << m_processPlanTime_s
+                            << std::endl;
+                    metricsStream.close();
+                } //if(!m_searchMetricsFileName.empty())
+            }
+            else //if(isFindClosestIndices(positionStart,positionEnd,indexIdStart,index ...
             {
-                std::ofstream metricsStream(m_searchMetricsFileName.c_str(), std::ios::app);
-                metricsStream << m_numberHighways << ", "
-                        << m_numberNodes << ", "
-                        << m_numberPlanningNodes << ", "
-                        << m_numberPlanningEdges << ", "
-                        << m_processMapTime_s << ", "
-                        << nodeIdStart << ", "
-                        << nodeIdEnd << ", "
-                        << pathNodeIds.size() << ", "
-                        << numberWaypoints << ", "
-                        << pathCost << ", "
-                        << m_searchTime_s << ", "
-                        << m_processPlanTime_s
-                        << std::endl;
-                metricsStream.close();
-            } //if(!m_searchMetricsFileName.empty())
-        }
-        else //if(isFindClosestIndices(positionStart,positionEnd,indexIdStart,index ...
-        {
-            CERR_FILE_LINE_MSG("bProcessRoutePlanRequest:: could not find graph indices for RouteRequestId[" << (*itRequest)->getRouteID() << "].")
-        } //if(isFindClosestIndices(positionStart,positionEnd,indexIdStart,index  ...
-        routePlanResponse->getRouteResponses().push_back(routePlan);
-        routePlan = nullptr; //gave it up
-    } //for (auto itRequest = routePlanRequest->getRouteRequests()
+                UXAS_LOG_ERROR("bProcessRoutePlanRequest:: could not find graph indices for RouteRequestId[", (*itRequest)->getRouteID(), "].");
+                isSuccess = false;
+            } //if(isFindClosestIndices(positionStart,positionEnd,indexIdStart,index  ...
+        } //for (auto itRequest = routePlanRequest->getRouteRequests()
+    } //if(m_graph && m_planningIndexVsNodeId && m_idVsNode)
 
-    return routePlanResponse;
+    return (isSuccess);
 }
 
 bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::messages::route::RoadPointsRequest>& roadPointsRequest,
@@ -586,10 +589,10 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                     {
                         for (auto itEdgeIdEnd = itSegmentsEnd.first; itEdgeIdEnd != itSegmentsEnd.second; itEdgeIdEnd++)
                         {
-//                            COUT_FILE_LINE_MSG("itEdgeIdStart->second.first[" << itEdgeIdStart->second.first
+//                            UXAS_LOG_INFORM("itEdgeIdStart->second.first[" << itEdgeIdStart->second.first
 //                                               << "] itEdgeIdStart->second.second[" << itEdgeIdStart->second.second
 //                                               << "] itEdgeIdEnd->second.first[" << itEdgeIdEnd->second.first
-//                                               << "] itEdgeIdEnd->second.second[" << itEdgeIdEnd->second.second << "]")
+//                                               << "] itEdgeIdEnd->second.second[" << itEdgeIdEnd->second.second << "]");
                             if ((itEdgeIdStart->second.first == itEdgeIdEnd->second.first) &&
                                     (itEdgeIdStart->second.second == itEdgeIdEnd->second.second))
                             {
@@ -656,10 +659,10 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                     else //if(isSameEdge)
                     {
                         // 4) find distance from start/end points to edge point 
-                        double distanceStartToStart_01((numeric_limits<double>::max)());
-                        double distanceStartToStart_02((numeric_limits<double>::max)());
-                        double distanceEndToEnd_01((numeric_limits<double>::max)());
-                        double distanceEndToEnd_02((numeric_limits<double>::max)());
+                        double distanceStartToStart_01((std::numeric_limits<double>::max)());
+                        double distanceStartToStart_02((std::numeric_limits<double>::max)());
+                        double distanceEndToEnd_01((std::numeric_limits<double>::max)());
+                        double distanceEndToEnd_02((std::numeric_limits<double>::max)());
 
                         auto startSegmentNodeId_01 = itSegmentsStart.first->second.first;
                         auto startSegmentNodeId_02 = itSegmentsStart.first->second.second;
@@ -754,7 +757,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
 
                             // 7) build plan from closest start node to start node
 
-                            //COUT_FILE_LINE_MSG("[startSegmentNodeId_01,startSegmentNodeId_02]=[" << startSegmentNodeId_01 << "," << startSegmentNodeId_02 << "]")
+                            //UXAS_LOG_INFORM("[startSegmentNodeId_01,startSegmentNodeId_02]=[" << startSegmentNodeId_01 << "," << startSegmentNodeId_02 << "]");
                             edgeEndNodeId = pathNodeIdsFinal.front();
                             edgeBeginNodeId = startSegmentNodeId_02;
                             if (edgeBeginNodeId == edgeEndNodeId)
@@ -762,7 +765,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                 edgeBeginNodeId = startSegmentNodeId_01;
                             }
 
-                            //COUT_FILE_LINE_MSG("[edgeBeginNodeId,edgeEndNodeId]=[" << edgeBeginNodeId << "," << edgeEndNodeId << "]")
+                            //UXAS_LOG_INFORM("[edgeBeginNodeId,edgeEndNodeId]=[" << edgeBeginNodeId << "," << edgeEndNodeId << "]");
                             if (isGetNodesOnSegment(std::make_pair(edgeBeginNodeId, edgeEndNodeId),
                                                     nodeIdStart, edgeEndNodeId, false, fullPathNodeIds))
                             {
@@ -780,7 +783,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                         }
                                         else
                                         {
-                                            CERR_FILE_LINE_MSG("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[" << *itPathNodeIdLast << "," << *itPathNodeId << "] start/end IDs [" << *itPathNodeIdLast << "," << *itPathNodeId << "]")
+                                            UXAS_LOG_ERROR("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[", *itPathNodeIdLast, ",", *itPathNodeId, "] start/end IDs [", *itPathNodeIdLast, ",", *itPathNodeId, "]");
                                             isSuccess = false;
                                         }
                                     }
@@ -802,7 +805,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                 }
                                 else
                                 {
-                                    CERR_FILE_LINE_MSG("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[" << edgeBeginNodeId << "," << edgeEndNodeId << "] start/end IDs [" << edgeBeginNodeId << "," << edgeEndNodeId << "]")
+                                    UXAS_LOG_ERROR("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[", edgeBeginNodeId, ",", edgeEndNodeId, "] start/end IDs [", edgeBeginNodeId, ",", edgeEndNodeId, "]");
                                     isSuccess = false;
                                 }
 
@@ -842,7 +845,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                             }
                             else
                             {
-                                CERR_FILE_LINE_MSG("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[" << edgeBeginNodeId << "," << edgeEndNodeId << "] start/end IDs [" << nodeIdStart << "," << edgeEndNodeId << "]")
+                                UXAS_LOG_ERROR("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[", edgeBeginNodeId, ",", edgeEndNodeId, "] start/end IDs [", nodeIdStart, ",", edgeEndNodeId, "]");
                                 isSuccess = false;
                             }
                         } //if(pathNodeIds.size() > 1)
@@ -913,7 +916,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
             }
             else //if (isSuccess)
             {
-                CERR_FILE_LINE_MSG("Error:: could not find route for RouteRequestId[" << (*itRequest)->getRoadPointsID() << "].")
+                UXAS_LOG_ERROR("Error:: could not find route for RouteRequestId[", (*itRequest)->getRoadPointsID(), "].");
                 isSuccess = false;
             }
         } //for (auto itRequest = roadPoints
@@ -935,7 +938,7 @@ bool OsmPlannerService::isGetRoadPoints(const int64_t& startNodeId,const int64_t
     {
         if (!isFindShortestRoute(startNodeId, endNodeId, pathCost, pathNodeIds))
         {
-            CERR_FILE_LINE_MSG("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[" << startNodeId << "," << endNodeId << "]")
+            UXAS_LOG_ERROR("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[", startNodeId, ",", endNodeId, "]");
             isSuccess = false;
         }
     }
@@ -1056,7 +1059,7 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
                 }
                 else //if (!ndCurrent.attribute("id").empty())
                 {
-                    CERR_FILE_LINE_MSG("OSM FILE:: parse XML string failed for osmFile[" << osmFile << "] :: could not find a 'way id'")
+                    UXAS_LOG_ERROR("OSM FILE:: parse XML string failed for osmFile[", osmFile, "] :: could not find a 'way id'");
                 }
             }
 
@@ -1111,19 +1114,19 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
                                 }
                                 else //if (!ndCurrent.attribute("lon").empty())
                                 {
-                                    CERR_FILE_LINE_MSG("OSM FILE:: parse XML string failed, could not find longitude for node id[" << nodeId << "]")
+                                    UXAS_LOG_ERROR("OSM FILE:: parse XML string failed, could not find longitude for node id[", nodeId, "]");
                                 } //if (!ndCurrent.attribute("lon").empty())
                             } //if (!ndCurrent.attribute("lat").empty())
                             else
                             {
-                                CERR_FILE_LINE_MSG("OSM FILE:: parse XML string failed, could not find longitude for node id[" << nodeId << "]")
+                                UXAS_LOG_ERROR("OSM FILE:: parse XML string failed, could not find longitude for node id[", nodeId, "]");
                             } //if (!ndCurrent.attribute("lat").empty())
                         } //if (itIdNode == m_idVsNode->end())
                     } //if(itIdVsPlanning != nodeIdVs_isPlanningNode.end())
                 }
                 else //if (!ndCurrent.attribute("id").empty())
                 {
-                    CERR_FILE_LINE_MSG("OSM FILE:: parse XML string failed, could not find node id[" << nodeId << "] ")
+                    UXAS_LOG_ERROR("OSM FILE:: parse XML string failed, could not find node id[", nodeId, "] ");
                 } //if (!ndCurrent.attribute("id").empty())
             } //ffor (pugi::xml_node ndCurrent = osmMap.child("node"); ndCurrent; ndCurrent = ndCurr ... 
 
@@ -1181,18 +1184,18 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
             auto endTime = std::chrono::system_clock::now();
             std::chrono::duration<double> elapsed_seconds = endTime - startTime;
             m_processMapTime_s = elapsed_seconds.count();
-            COUT_FILE_LINE_MSG(" **** Finished reading and processing OSM File; and building the Graph: Elapsed Seconds[" << m_processMapTime_s << "] ****");
-            COUT_FILE_LINE_MSG("OSM FILE:: loaded [" << m_numberHighways << "] highways, [" << m_numberNodes << "] nodes, [" << m_numberPlanningNodes << "] planning nodes, and [" << m_numberPlanningEdges << "] planning edges")
+            UXAS_LOG_INFORM(" **** Finished reading and processing OSM File; and building the Graph: Elapsed Seconds[" << m_processMapTime_s << "] ****");
+            UXAS_LOG_INFORM("OSM FILE:: loaded [" << m_numberHighways << "] highways, [" << m_numberNodes << "] nodes, [" << m_numberPlanningNodes << "] planning nodes, and [" << m_numberPlanningEdges << "] planning edges");
 
         }
         else //if (osmMap)
         {
-            CERR_FILE_LINE_MSG("OSM FILE:: parse XML string failed, could not find 'osm' section in osmFile[" << osmFile << "] ")
+            UXAS_LOG_ERROR("OSM FILE:: parse XML string failed, could not find 'osm' section in osmFile[", osmFile, "] ");
         } //if (osmMap)
     } //if (result)
     else //if (osmMap)
     {
-        CERR_FILE_LINE_MSG("OSM FILE:: parse XML string failed for osmFile[" << osmFile << "]")
+        UXAS_LOG_ERROR("OSM FILE:: parse XML string failed for osmFile[", osmFile, "]");
     }
     return (isSuccess);
 }
@@ -1276,7 +1279,7 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
             }
             else //if(itIsPlanningNode != nodeIdVs_isPlanningNode.end())
             {
-                CERR_FILE_LINE_MSG("OSM FILE:: while saving highway waypoints, could not find [" << itHighwayNode->second << "] in nodeIdVs_isPlanningNode.")
+                UXAS_LOG_ERROR("OSM FILE:: while saving highway waypoints, could not find [", itHighwayNode->second, "] in nodeIdVs_isPlanningNode.");
                 isSuccess = false;
                 break;
             }
@@ -1284,7 +1287,7 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
     } //for(auto itHighway=highWayIds.begin();itHighway!=highWayIds.end();itHighway++)
 
     m_nodeIdVsSegmentBeginEndIds.clear();
-    cout << "Calculating segment begin/end ids ... ";
+    UXAS_LOG_INFORM("Calculating segment begin/end ids ... ");
     for (auto itEdgeNodeIds = m_nodeIdsVsEdgeNodeIds.begin(); itEdgeNodeIds != m_nodeIdsVsEdgeNodeIds.end(); itEdgeNodeIds++)
     {
         for (auto itNodeId = itEdgeNodeIds->second->m_nodeIds.begin(); itNodeId != itEdgeNodeIds->second->m_nodeIds.end(); itNodeId++)
@@ -1292,7 +1295,7 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
             m_nodeIdVsSegmentBeginEndIds.insert(std::make_pair(*itNodeId, itEdgeNodeIds->first));
         }
     }
-    cout << "complete" << std::endl;
+    UXAS_LOG_INFORM("complete");
 
     return (isSuccess);
 }
@@ -1396,13 +1399,13 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
                         else
                         {
                             currentWayId = -1; //need to find a valid start point before proceeding
-                            CERR_FILE_LINE_MSG("OSM FILE:: while building edges:: could not find index for node[" << itNode->second << "]")
+                            UXAS_LOG_INFORM("OSM FILE:: while building edges:: could not find index for node[" << itNode->second << "]");
                         }
                     }
                     else
                     {
                         currentWayId = -1; //need to find a valid start point before proceeding
-                        CERR_FILE_LINE_MSG("OSM FILE:: while building edges:: could not find node[" << itNode->second << "]")
+                        UXAS_LOG_ERROR("OSM FILE:: while building edges:: could not find node[", itNode->second, "]");
                     }
                 }
                 else //if(itWayNodeIds->first != currentWayId)
@@ -1418,7 +1421,7 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
                             int64_t distance = static_cast<int64_t> (itEndId->second->relativeDistance2D_m(*(itLastNode->second)) + runningLength_m);
 
                             m_edges.push_back(n_FrameworkLib::CEdge(startIndex, endIndex, distance));
-                            std::cout << "startId[" << itStartId->first << "] endId[" << itEndId->first << "] distance[" << distance << "]" << std::endl;
+                            UXAS_LOG_INFORM("startId[" << itStartId->first << "] endId[" << itEndId->first << "] distance[" << distance << "]" << std::endl);
 
                             itStartId = itEndId;
                             itLastNode = itEndId;
@@ -1427,7 +1430,7 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
                         }
                         else
                         {
-                            CERR_FILE_LINE_MSG("OSM FILE:: while building edges:: could not find index for node[" << itNode->second << "]")
+                            UXAS_LOG_ERROR("OSM FILE:: while building edges:: could not find index for node[", itNode->second, "]");
                             isSuccess = false;
                         }
                     }
@@ -1444,7 +1447,7 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
                 }
                 else
                 {
-                    CERR_FILE_LINE_MSG("OSM FILE:: while building edges:: could not find node for node ID[" << itNode->second << "]")
+                    UXAS_LOG_ERROR("OSM FILE:: while building edges:: could not find node for node ID[", itNode->second, "]");
                 }
             } //if(itPlanning != m_planningNodes.end())
         }
@@ -1553,7 +1556,7 @@ bool OsmPlannerService::isFindShortestRoute(const int64_t& startNodeId, const in
                 }
                 else
                 {
-                    CERR_FILE_LINE_MSG("OSM FILE:: while constructing shortest route from index[ " << static_cast<int64_t> (v) << "], could not find corresponding node Id.")
+                    UXAS_LOG_ERROR("OSM FILE:: while constructing shortest route from index[ ", static_cast<int64_t> (v), "], could not find corresponding node Id.");
                     isSuccess = false;
                     break;
                 }
@@ -1562,11 +1565,11 @@ bool OsmPlannerService::isFindShortestRoute(const int64_t& startNodeId, const in
             auto endTime = std::chrono::system_clock::now();
             std::chrono::duration<double> elapsed_seconds = endTime - startTime;
             m_searchTime_s = elapsed_seconds.count();
-            COUT_FILE_LINE_MSG(" **** Finished running ASTAR search from startNodeId[" << startNodeId << "] to endNodeId[" << endNodeId << "] Elapsed Seconds[" << elapsed_seconds.count() << "] ****");
+            UXAS_LOG_INFORM(" **** Finished running ASTAR search from startNodeId[" << startNodeId << "] to endNodeId[" << endNodeId << "] Elapsed Seconds[" << elapsed_seconds.count() << "] ****");
 
 #define PRINT_SHORTEST_PATH
 #ifdef PRINT_SHORTEST_PATH
-            std::cout << std::endl << "isFindShortestRoute:: Shortest path from startNodeId[" << startNodeId << "] to endNodeId[" << endNodeId << "] " << std::endl;
+            UXAS_LOG_INFORM("isFindShortestRoute:: Shortest path from startNodeId[" << startNodeId << "] to endNodeId[" << endNodeId << "] " << std::endl);
             for (auto itNode = pathNodes.begin(); itNode != pathNodes.end(); itNode++)
             {
                 std::cout << " -> " << *itNode;
@@ -1579,7 +1582,7 @@ bool OsmPlannerService::isFindShortestRoute(const int64_t& startNodeId, const in
 
     if (!isSuccess)
     {
-        CERR_FILE_LINE_MSG("Didn't find a path from startNodeId[" << startNodeId << "] to endNodeId[" << endNodeId << "] !")
+        UXAS_LOG_ERROR("Didn't find a path from startNodeId[", startNodeId, "] to endNodeId[", endNodeId, "] !");
     }
 
 
@@ -1688,7 +1691,7 @@ bool OsmPlannerService::isExamineCell(const n_FrameworkLib::CPosition& position,
         }
         else
         {
-            CERR_FILE_LINE_MSG("isFindClosestIndices:: could not find Node based on the planning node Id[ " << itNodeId->second << "].")
+            UXAS_LOG_ERROR("isFindClosestIndices:: could not find Node based on the planning node Id[ ", itNodeId->second, "].");
             isFoundNewNode = false;
             break;
         }
@@ -1802,7 +1805,7 @@ void OsmPlannerService::findRoadIntersectionsOfCircle(const n_FrameworkLib::CPos
                             }
                             else
                             {
-                                CERR_FILE_LINE_MSG("OSM FILE:: findRoadIntersectionsOfCircle:: could not find node for either Id[" << *itNodeIdFirst << "] or Id[" << *itNodeIdSecond << "]")
+                                UXAS_LOG_ERROR("OSM FILE:: findRoadIntersectionsOfCircle:: could not find node for either Id[", *itNodeIdFirst, "] or Id[", *itNodeIdSecond, "]");
                             }
                         }
                     }
@@ -1860,7 +1863,7 @@ bool OsmPlannerService::isGetNodesOnSegment(const std::pair<int64_t, int64_t>& s
     }
     else
     {
-        CERR_FILE_LINE_MSG("OSM FILE:: isGetNodesOnSegment:: could not find edge for node pair [" << segmentNodeIds.first << ", " << segmentNodeIds.second << "]")
+        UXAS_LOG_ERROR("OSM FILE:: isGetNodesOnSegment:: could not find edge for node pair [", segmentNodeIds.first, ", ", segmentNodeIds.second, "]");
     }
     return (isSuccess);
 }
