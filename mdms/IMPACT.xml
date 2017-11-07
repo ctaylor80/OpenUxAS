@@ -322,26 +322,6 @@
             <!-- ID of the first waypoint in the plan. -->
             <Field Name="FirstWaypoint" Type="int64"/>
         </Struct>
-
-        <!-- Component heartbeat expected to be sent out @ 1Hz-->
-        <Struct Name="ImpactHeartbeat" >
-        <!-- Label of system component sending heartbeat -->
-            <Field Name="ComponentLabel" Type="string" />
-            <!-- Time at which this heatbeat was sent (milliseconds since 1 Jan 1970 00:00 GMT) -->
-            <Field Name="HeartbeatTime" Type="int64" Units="milliseconds"/>
-        </Struct>
-        
-        <!-- Component Join -->
-        <Struct Name="ImpactComponentJoin" >
-            <!-- Label of component joining network -->
-            <Field Name="ComponentLabel" Type="string" />
-        </Struct>
-        
-        <!-- Component Leave -->
-        <Struct Name="ImpactComponentLeave" >
-            <!-- Label of component leaving network -->
-            <Field Name="ComponentLabel" Type="string" />
-        </Struct>
         
         <!-- Data structure for associating a vehicle to a particular altitude and speed -->
         <Struct Name="SpeedAltPair" >
