@@ -103,6 +103,7 @@ namespace uxas
             bool isCheckAutomationRequestRequirements(const std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>& uniqueAutomationRequest);
             void checkToSendNextRequest();
             void sendResponseError(int64_t reqID, std::string errStr);
+            std::string generateDescription(std::vector<int64_t> vehicles, std::vector<int64_t> tasks);
 
             /*! \brief  this timer is used to track time for the system to respond
             * to automation requests*/

@@ -163,6 +163,7 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
     if ( entityConfig )
     {
         m_availableConfigurationEntityIds.insert(entityConfig->getID());
+        IMPACT_INFORM(entityConfig->getLmcpTypeName(), " received for vehicle ", entityConfig->getID());
         isMessageHandled = true;
     }
     else if ( entityState )
@@ -237,30 +238,9 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
             m_sandboxMap[uniqueAutomationRequest->getRequestID()] = SANDBOX_AUTOMATION_REQUEST;
             uniqueAutomationRequest->setOriginalRequest(sand->getTrialRequest()->clone());
 
-            std::string vehicles = "[";
-            for (auto vehicle : sand->getTrialRequest()->getEntityList())
-            {
-                vehicles += std::to_string(vehicle);
-            }
-            vehicles += "]";
-
-            std::string tasks = "[";
-            for (auto task : sand->getTrialRequest()->getTaskList())
-            {
-                if (m_availableTasks.find(task) != m_availableTasks.end())
-                {
-                    tasks += m_availableTasks.find(task)->second->getLmcpTypeName();
-                }
-                else
-                {
-                    tasks += std::to_string(task);
-                }
-            }
-            tasks += "]";
-
-            IMPACT_INFORM("recieved impact request with id ", sand->getRequestID(), ". Vehicles ", vehicles, ". Tasks ", tasks);
-
-
+            auto req = sand->getTrialRequest();
+            auto desc = generateDescription(req->getEntityList(), req->getTaskList());
+            IMPACT_INFORM("recieved impact request with id ", sand->getRequestID(), " ", desc);
         }
         else if (uxas::messages::task::isTaskAutomationRequest(receivedLmcpMessage->m_object))
         {
@@ -429,38 +409,17 @@ void AutomationRequestValidatorService::OnResponseTimeout()
     {
         auto id = m_waitingForResponse->getRequestID();
         m_timedOutRequests.insert(id);
-        std::string vehicles = "[";
-        for (auto vehicle : m_waitingForResponse->getOriginalRequest()->getEntityList())
-        {
-            vehicles += std::to_string(vehicle);
-        }
-        vehicles += "]";
-
-        std::string tasks = "[";
-        for (auto task : m_waitingForResponse->getOriginalRequest()->getTaskList())
-        {
-            if (m_availableTasks.find(task) != m_availableTasks.end())
-            {
-                tasks += m_availableTasks.find(task)->second->getLmcpTypeName();
-            }
-            else
-            {
-                tasks += std::to_string(task);
-            }
-        }
-        tasks += "]";
-
-        auto description = "timeout. request " + std::to_string(m_waitingForResponse->getRequestID()) + " vehicles: " + vehicles + " tasks: " + tasks;
-        sendResponseError(id, description);
+        sendResponseError(id, "Timeout.");
 
         m_waitingForResponse.reset();
-
     }
 }
 
 void AutomationRequestValidatorService::sendResponseError(int64_t reqID, std::string errStr)
 {
-    UXAS_LOG_ERROR("failure to create response: ", errStr);
+    auto req = m_waitingForResponse->getOriginalRequest();
+    auto desc = generateDescription(req->getEntityList(), req->getTaskList());
+    UXAS_LOG_ERROR("failure to create response: ", errStr, " ", desc);    
     auto errorResponse = std::make_shared<afrl::cmasi::AutomationResponse>();
 
     auto keyValuePair = new afrl::cmasi::KeyValuePair;
@@ -500,7 +459,7 @@ void AutomationRequestValidatorService::sendResponseError(int64_t reqID, std::st
     }
     else
     {
-        sendSharedLmcpObjectBroadcastMessage(errorResponse);
+        UXAS_LOG_ERROR("ERROR reported for a response that has already been sent!");
     }
 }
 
@@ -763,7 +722,30 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
 
     return (isReady);
 }
+std::string AutomationRequestValidatorService::generateDescription(std::vector<int64_t> vehicles, std::vector<int64_t> tasks) {
+    std::string vehiclesDesc = "[";
+    for (auto vehicle : vehicles)
+    {
+        vehiclesDesc += std::to_string(vehicle);
+    }
+    vehiclesDesc += "]";
 
+    std::string tasksDesc = "[";
+    for (auto task : tasks)
+    {
+        if (m_availableTasks.find(task) != m_availableTasks.end())
+        {
+            tasksDesc += m_availableTasks.find(task)->second->getLmcpTypeName() + " ";
+        }
+        else
+        {
+            tasksDesc += std::to_string(task);
+        }
+    }
+    tasksDesc += "]";
+
+    return "vehicles: " + vehiclesDesc + " tasks: " + tasksDesc;
+}
 
 
 }; //namespace service
