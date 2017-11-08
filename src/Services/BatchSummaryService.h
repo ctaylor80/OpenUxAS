@@ -78,7 +78,7 @@ namespace uxas
             virtual
                 ~BatchSummaryService();
 
-            static void UpdateSummaryUtil(afrl::impact::VehicleSummary* sum, std::vector<afrl::cmasi::Waypoint*> waypoints);
+            static void UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end);
 
 
         private:
@@ -108,7 +108,7 @@ namespace uxas
 
             void HandleBatchSummaryRequest(std::shared_ptr<afrl::impact::BatchSummaryRequest>);
             void HandleEgressRouteResponse(std::shared_ptr<uxas::messages::route::EgressRouteResponse>);
-            void UpdateSummary(afrl::impact::VehicleSummary* sum, std::vector<afrl::cmasi::Waypoint*> waypoints);
+            void UpdateSummary(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end);
             bool FinalizeBatchRequest(int64_t);
             void BuildSummaryOptions(int64_t, std::shared_ptr<afrl::impact::BatchSummaryResponse>&, std::vector<std::shared_ptr<afrl::impact::VehicleSummary> >&, int64_t);
             void HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& object);

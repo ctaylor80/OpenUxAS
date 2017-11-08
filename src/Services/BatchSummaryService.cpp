@@ -193,65 +193,84 @@ namespace uxas
             return (false); // always false implies never terminating service from here
         }
 
-        void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& object)
+        void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& taskAutomationResponse)
         {
-            m_workingTaskAutomationResponses[object->getResponseID()] = object; //may be the last one for a BatchSummaryResponse
+            auto taskAutomationRequest = m_pendingTaskAutomationRequests.find(taskAutomationResponse->getResponseID());
 
-            auto taskAutomationRequest = m_pendingTaskAutomationRequests.find(object->getResponseID());
-            IMPACT_INFORM("recieved internal task automation response ", taskAutomationRequest->second->getRequestID());
 
-            std::list<int64_t> finishedIds;
-            for (auto batchSummaryRequestId : m_batchSummaryRequestVsTaskAutomation)
+            //iterate through taskAutomationResponse waypoints to reconstruct tasks.
+            //this gives ordering and lists of waypoints to reconstruct costs.
+            for (auto missionCommand : taskAutomationResponse->getOriginalResponse()->getMissionCommandList())
             {
-                bool finished = true;
-                for (auto expectedTaskAutomationResponse : batchSummaryRequestId.second)
+                auto vehicle = missionCommand->getVehicleID();
+                auto taskStart = missionCommand->getWaypointList().begin();
+                bool iteratingToTask = true;
+                auto workingTask = -1;
+                auto prevTask = 0;
+                for (auto wpIter = missionCommand->getWaypointList().begin(); wpIter != missionCommand->getWaypointList().end(); wpIter++)
                 {
-                    if (m_workingTaskAutomationResponses.find(expectedTaskAutomationResponse) == m_workingTaskAutomationResponses.end())
-                        finished = false;
-                    if (expectedTaskAutomationResponse == object->getResponseID())
+                    if (!(*wpIter)->getAssociatedTasks().empty())
                     {
-                        auto response = m_workingResponse.find(batchSummaryRequestId.first);
-                        //find corresponding summary
-                        auto taskSummary = std::find_if(response->second->getSummaries().begin(), response->second->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == taskAutomationRequest->second->getOriginalRequest()->getTaskList().front(); });
-                        if (taskSummary != response->second->getSummaries().end())
+                        if (iteratingToTask) //found first waypoint on task
                         {
-                            auto vehicleSummary = std::find_if((*taskSummary)->getPerformingVehicles().begin(), (*taskSummary)->getPerformingVehicles().end(), [&](const afrl::impact::VehicleSummary* x) {return x->getVehicleID() == taskAutomationRequest->second->getOriginalRequest()->getEntityList().front(); });
-                            if (vehicleSummary != (*taskSummary)->getPerformingVehicles().end())
-                            {
-                                if (object->getOriginalResponse()->getMissionCommandList().empty())
-                                {
-                                    continue;
-                                }
+                            iteratingToTask = false;
+                            prevTask = workingTask;
+                            workingTask = (*wpIter)->getAssociatedTasks().front();
+                        }
+                    }
+                    else
+                    {
+                        if (!iteratingToTask) //found last waypoint
+                        {
+                            iteratingToTask = true;
+                            auto taskEnd = wpIter;
+                            //create vehicle summary
+                            auto summary = std::make_shared<afrl::impact::VehicleSummary>();
+                            summary->setVehicleID(vehicle);
+                            summary->setDestinationTaskID(workingTask);
+                            summary->setInitialTaskID(prevTask);
 
-                                auto waypoints = object->getOriginalResponse()->getMissionCommandList().front()->getWaypointList();
-                                UpdateSummaryUtil(*vehicleSummary, waypoints);
-                                UpdateSummary(*vehicleSummary, waypoints);
+                            UpdateSummaryUtil(summary.get(), taskStart, taskEnd);
+                            UpdateSummary(summary.get(), taskStart, taskEnd);
+                            //set next taskStart
+                            taskStart = wpIter;
+
+                            //get the right TaskSummary
+                            for (auto workingResponse : m_workingResponse)
+                            {
+                                auto workingTaskSummary = std::find_if(workingResponse.second->getSummaries().begin(), workingResponse.second->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == workingTask; });
+                                if (workingTaskSummary != workingResponse.second->getSummaries().end())
+                                {
+                                    (*workingTaskSummary)->getPerformingVehicles().push_back(summary->clone());
+                                }
                             }
                         }
-
-
-                        m_pendingTaskAutomationRequests.erase(object->getResponseID());
-
-                    }
-                }
-                if (finished)
-                {
-                    finishedIds.push_back(batchSummaryRequestId.first);
-
-                    for (auto expectedTaskAutomationResponse : batchSummaryRequestId.second)
-                    {
-                        m_workingTaskAutomationResponses.erase(expectedTaskAutomationResponse);
                     }
                 }
             }
+
+            //remove pending task automation response. If any are empty, finalize
+            std::list<int64_t> finishedIds;
+            auto batchSummary = std::find_if(m_batchSummaryRequestVsTaskAutomation.begin(), m_batchSummaryRequestVsTaskAutomation.end(),
+                [&](const std::pair<int64_t, std::list<int64_t>> x)
+            {return std::find(x.second.begin(), x.second.end(), taskAutomationResponse->getResponseID()) != x.second.end(); });
+
+            if (batchSummary != m_batchSummaryRequestVsTaskAutomation.end())
+            {
+                (*batchSummary).second.remove(taskAutomationResponse->getResponseID());
+                if ((*batchSummary).second.empty())
+                {
+                    finishedIds.push_back((*batchSummary).first);
+                }
+            }
+
+
             for (auto finishedId : finishedIds)
             {
-                //the batchSummaryResponse should be good to go, send it and remove everything
                 FinalizeBatchRequest(finishedId);
                 m_batchSummaryRequestVsTaskAutomation.erase(finishedId);
             }
         }
-
         void BatchSummaryService::HandleEgressRouteResponse(std::shared_ptr<uxas::messages::route::EgressRouteResponse> egress)
         {
             // ASSUME: receive back in order sent, FUTURE: add request/response IDs
@@ -460,55 +479,73 @@ namespace uxas
             m_workingResponse[responseId]->setResponseID(request->getRequestID());
 
             m_workingRequests[responseId] = request;
-            IMPACT_INFORM("received batch request ", request->getRequestID(), ". splitting into ", request->getTaskList().size() * request->getVehicles().size(), " internal task Automation Requests");
 
-            for (auto task : request->getTaskList())
+            std::vector<std::shared_ptr<afrl::cmasi::AutomationRequest>> requests;
+            if (request->getTaskRelationships().empty()) //no relationship. create a request per each vehicle task pair
             {
-                auto workingTaskSummary = new afrl::impact::TaskSummary();
-                workingTaskSummary->setTaskID(task);
-                m_workingResponse[responseId]->getSummaries().push_back(workingTaskSummary);
-
                 for (auto vehicle : request->getVehicles())
                 {
-                    auto workingVehicleSummary = new afrl::impact::VehicleSummary();
-                    workingVehicleSummary->setVehicleID(vehicle);
-                    workingVehicleSummary->setDestinationTaskID(task);
-                    workingVehicleSummary->setTimeToArrive(-1);
-                    workingTaskSummary->getPerformingVehicles().push_back(workingVehicleSummary);
+                    for (auto task : request->getTaskList())
+                    {
+                        auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
+                        automationRequest->getTaskList().push_back(task);
+                        automationRequest->getEntityList().push_back(vehicle);
+                        requests.push_back(automationRequest);
+                    }
                 }
-
+            }
+            else //assume task relationship is a sequence. add all tasks to each request and send a request per vehicle
+            {
                 for (auto vehicle : request->getVehicles())
                 {
                     auto taskAutomationRequest = std::make_shared<messages::task::TaskAutomationRequest>();
                     taskAutomationRequest->setSandBoxRequest(true);
 
-                    taskAutomationRequest->setRequestID(m_taskAutomationRequestId); //need unique ID and a mapping to the batchsummary
-                    m_batchSummaryRequestVsTaskAutomation[responseId].push_back(m_taskAutomationRequestId);
-                    m_taskAutomationRequestId++;
-
-                    //may have to add a processing algebra string here in the future.
                     auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
-                    automationRequest->getTaskList().push_back(task);
+                    for (auto task : request->getTaskList())
+                    {
+                        automationRequest->getTaskList().push_back(task);
+                    }
+                    automationRequest->setTaskRelationships(request->getTaskRelationships());
                     automationRequest->getEntityList().push_back(vehicle);
-
-                    taskAutomationRequest->setOriginalRequest(automationRequest->clone());
-
-                    //m_pendingTaskAutomationRequests[request->getRequestID()] = responseId;
-                    std::shared_ptr<avtas::lmcp::Object> pRequest = std::static_pointer_cast<avtas::lmcp::Object>(taskAutomationRequest);
-                    m_pendingTaskAutomationRequests[taskAutomationRequest->getRequestID()] = taskAutomationRequest;
-                    sendSharedLmcpObjectBroadcastMessage(pRequest);
+                    requests.push_back(automationRequest);
                 }
             }
+
+            //go ahead and make TaskSummaries
+            for (auto task : request->getTaskList())
+            {
+                auto workingSummary = std::make_shared<afrl::impact::TaskSummary>();
+                workingSummary->setTaskID(task);
+                workingSummary->setBestEffort(100);
+                m_workingResponse[responseId]->getSummaries().push_back(workingSummary->clone());
+            }
+
+            //wrap requests up to send into TaskAutomationRequests
+            for (auto requestToSend : requests)
+            {
+                auto taskAutomationRequest = std::make_shared<messages::task::TaskAutomationRequest>();
+                taskAutomationRequest->setSandBoxRequest(true);
+                taskAutomationRequest->setRequestID(m_taskAutomationRequestId);
+                m_taskAutomationRequestId++;
+                taskAutomationRequest->setOriginalRequest(requestToSend->clone());
+
+                std::shared_ptr<avtas::lmcp::Object> pRequest = std::static_pointer_cast<avtas::lmcp::Object>(taskAutomationRequest);
+                m_pendingTaskAutomationRequests[taskAutomationRequest->getRequestID()] = taskAutomationRequest;
+                m_batchSummaryRequestVsTaskAutomation[responseId].push_back(taskAutomationRequest->getRequestID());
+                sendSharedLmcpObjectBroadcastMessage(pRequest);
+            }
+            IMPACT_INFORM("received batch request ", request->getRequestID(), ". split into ", requests.size(), " internal task Automation Requests");
         }
 
-        void BatchSummaryService::UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, std::vector<afrl::cmasi::Waypoint*> waypoints)
+        void BatchSummaryService::UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end)
         {
-            common::utilities::CUnitConversions unitConversions;
+            uxas::common::utilities::CUnitConversions unitConversions;
 
             //clone waypoints
-            for (auto wp : waypoints)
+            for (auto wp = task_begin; wp != task_end; wp++)
             {
-                sum->getWaypointList().push_back(wp->clone());
+                sum->getWaypointList().push_back((*wp)->clone());
             }
 
             //set timeOnTask and timeToArrive
@@ -516,15 +553,15 @@ namespace uxas
             double timeOnTask = 0.0;
             double timeToArrive = 0.0;
             bool onTask = false;
-            for (auto wp : waypoints)
+            for (auto wp = task_begin; wp != task_end; wp++)
             {
-                if (!wp->getAssociatedTasks().empty())
+                if (!(*wp)->getAssociatedTasks().empty())
                 {
                     onTask = true;
                 }
                 if (prev)
                 {
-                    auto timeFromPrev = unitConversions.dGetLinearDistance_m_Lat1Long1_deg_To_Lat2Long2_deg(prev->getLatitude(), prev->getLongitude(), wp->getLatitude(), wp->getLongitude()) / wp->getSpeed();
+                    auto timeFromPrev = unitConversions.dGetLinearDistance_m_Lat1Long1_deg_To_Lat2Long2_deg(prev->getLatitude(), prev->getLongitude(), (*wp)->getLatitude(), (*wp)->getLongitude()) / (*wp)->getSpeed();
                     if (onTask)
                     {
                         timeOnTask += timeFromPrev;
@@ -534,7 +571,7 @@ namespace uxas
                         timeToArrive += timeFromPrev;
                     }
                 }
-                prev = wp;
+                prev = *wp;
             }
 
             timeOnTask *= 1000;
@@ -552,7 +589,7 @@ namespace uxas
         }
 
 
-        void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary* sum, std::vector<afrl::cmasi::Waypoint*> waypoints)
+        void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end)
         {
             uxas::common::utilities::CUnitConversions unitConversions;
 
@@ -560,11 +597,11 @@ namespace uxas
             double north, east;
 
             //check conflicts with ROZ. Assume individual waypoints came from planner and do not conflict. Attached actions might.
-            for (auto wp : waypoints)
+            for (auto wp = task_begin; wp != task_end; wp++)
             {
-                for (auto action : wp->getVehicleActionList())
+                for (auto action : (*wp)->getVehicleActionList())
                 {
-                    if (isLoiterAction(action))
+                    if (afrl::cmasi::isLoiterAction(action))
                     {
                         afrl::cmasi::LoiterAction* loiter = dynamic_cast<afrl::cmasi::LoiterAction*>(action);
                         VisiLibity::Point p;
@@ -645,14 +682,14 @@ namespace uxas
                         m_entityStates[sum->getVehicleID()]->getLocation()->getLongitude(), vn, ve);
                     double vdist = sqrt((tn - vn) * (tn - vn) + (te - ve) * (te - ve));
                     beyondThisTower = (vdist > towerRange);
-                    for (auto wp : waypoints)
+                    for (auto wp = task_begin; wp != task_end; wp++)
                     {
                         if (beyondThisTower)
                             break;
                         double pn, pe;
-                        unitConversions.ConvertLatLong_degToNorthEast_m(wp->getLatitude(), wp->getLongitude(), pn, pe);
+                        unitConversions.ConvertLatLong_degToNorthEast_m((*wp)->getLatitude(), (*wp)->getLongitude(), pn, pe);
                         double pdist = sqrt((tn - pn) * (tn - pn) + (te - pe) * (te - pe));
-                        for (auto a : wp->getVehicleActionList())
+                        for (auto a : (*wp)->getVehicleActionList())
                         {
                             if (afrl::cmasi::isLoiterAction(a))
                             {

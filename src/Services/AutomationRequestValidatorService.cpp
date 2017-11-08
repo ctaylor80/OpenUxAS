@@ -328,21 +328,32 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                     {
                         auto taskSummary = std::make_shared<afrl::impact::TaskSummary>();
                         taskSummary->setTaskID(task);
-
-                        for (auto taskImplementation : m_availableTaskResponses)
-                        {
-                            if (taskImplementation->getTaskID() == task)
-                            {
-                                auto summary = std::make_shared<afrl::impact::VehicleSummary>();
-                                summary->setVehicleID(taskImplementation->getVehicleID());
-                                summary->setDestinationTaskID(task);
-                                if (!resp->getOriginalResponse()->getMissionCommandList().empty())
-                                {
-                                    BatchSummaryService::UpdateSummaryUtil(summary.get(), resp->getOriginalResponse()->getMissionCommandList().front()->getWaypointList());
-                                }
-                            }
-                        }
                         sandResponse->getSummaries().push_back(taskSummary->clone());
+                    }
+
+                    auto lastVehicleID = -1;
+                    auto lastTask = -1;
+                    for (auto taskImplementation : m_availableTaskResponses)
+                    {
+                        auto summary = std::make_shared<afrl::impact::VehicleSummary>();
+                        summary->setVehicleID(taskImplementation->getVehicleID());
+                        summary->setDestinationTaskID(taskImplementation->getTaskID());
+                        //consecutive responses with same vehicle implies sequential tasks
+                        if (taskImplementation->getVehicleID() == lastVehicleID) {
+                            summary->setInitialTaskID(lastTask);
+                        }
+                        if (!resp->getOriginalResponse()->getMissionCommandList().empty())
+                        {
+                            auto waypoints = resp->getOriginalResponse()->getMissionCommandList().front()->getWaypointList();
+                            BatchSummaryService::UpdateSummaryUtil(summary.get(), waypoints.begin(), waypoints.end());
+                        }
+
+                        auto taskSummary = std::find_if(sandResponse->getSummaries().begin(), sandResponse->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == taskImplementation->getTaskID(); });
+                        if (taskSummary != sandResponse->getSummaries().end()) {
+                            (*taskSummary)->getPerformingVehicles().push_back(summary->clone());
+                        }
+                        lastVehicleID = taskImplementation->getVehicleID();
+                        lastTask = taskImplementation->getTaskID();
                     }
                 }
 
