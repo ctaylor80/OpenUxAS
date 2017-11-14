@@ -370,8 +370,14 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                 if (kv->getKey().compare("No UniqueAutomationResponse") == 0)
                 {
                     int64_t id = 0;
-                    if (m_waitingForResponse) id = m_waitingForResponse->getRequestID();
-                    sendResponseError(id, kv->getValue());
+                    if (m_waitingForResponse) {
+                        id = m_waitingForResponse->getRequestID();
+                        sendResponseError(id, kv->getValue());
+                    }
+                    else
+                    {
+                        UXAS_LOG_WARN("kvp error with no waiting response! multiple were probably sent for the same request.");
+                    }
                     uxas::common::TimerManager::getInstance().disableTimer(m_responseTimerId, 0);
                     m_waitingForResponse.reset();
 
