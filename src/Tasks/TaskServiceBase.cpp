@@ -31,6 +31,7 @@
 #include <algorithm>      //std::find_if
 #include <sstream>      //std::stringstream
 #include <iomanip>  //setfill
+#include <afrl/cmasi/SearchTask.h>
 
 #define MAX_TOTAL_COST_MS (INT64_MAX / 1000)
 #define STRING_XML_TYPE "Type"
@@ -91,6 +92,14 @@ bool TaskServiceBase::configure(const pugi::xml_node& serviceXmlNode)
         sstrErrors << "ERROR:: **Task_Base::bConfigure failed: could find a task in [" << serviceXmlNode.name() << "]" << std::endl;
         CERR_FILE_LINE_MSG(sstrErrors.str())
         isSuccessful = false;
+    }
+
+    //double check sane Ground Sample Distance
+    auto searchTask = std::dynamic_pointer_cast<afrl::cmasi::SearchTask>(m_task);
+    if (searchTask) {
+        if (searchTask->getGroundSampleDistance() < 0.01) {
+            searchTask->setGroundSampleDistance(1000); 
+        }
     }
     
     for (pugi::xml_node currentXmlNode = serviceXmlNode.first_child(); currentXmlNode; currentXmlNode = currentXmlNode.next_sibling())
