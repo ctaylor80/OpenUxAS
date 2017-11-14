@@ -147,7 +147,8 @@ private:
                                      const std::unique_ptr<uxas::messages::task::SensorFootprint>& sensorFootprint,
                                      std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest);
     bool isCalculatePatternScanRoute_Spiral(std::shared_ptr<TaskOptionClass>& pTaskOptionClass,
-                                            const std::unique_ptr<uxas::messages::task::SensorFootprint>& sensorFootprint);
+                                            const std::unique_ptr<uxas::messages::task::SensorFootprint>& sensorFootprint,
+                                            std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest);
     bool isCalculatePatternScanRoute_Sector(std::shared_ptr<TaskOptionClass>& pTaskOptionClass,
                                             const std::unique_ptr<uxas::messages::task::SensorFootprint>& sensorFootprint,
                                             std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest);

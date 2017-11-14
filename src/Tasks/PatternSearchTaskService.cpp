@@ -329,7 +329,7 @@ bool PatternSearchTaskService::isCalculatePatternScanRoute(std::shared_ptr<TaskO
     if (m_patternSearchTask->getPattern() == afrl::impact::AreaSearchPattern::Spiral)
     {
         m_isUseDpss = false;
-        isSuccess = isCalculatePatternScanRoute_Spiral(pTaskOptionClass, sensorFootprint);
+        isSuccess = isCalculatePatternScanRoute_Spiral(pTaskOptionClass, sensorFootprint, routePlanRequest);
     }
     else if (m_patternSearchTask->getPattern() == afrl::impact::AreaSearchPattern::Sector)
     {
@@ -351,7 +351,8 @@ bool PatternSearchTaskService::isCalculatePatternScanRoute(std::shared_ptr<TaskO
 }
 
 bool PatternSearchTaskService::isCalculatePatternScanRoute_Spiral(std::shared_ptr<TaskOptionClass>& pTaskOptionClass,
-                                                                  const std::unique_ptr<uxas::messages::task::SensorFootprint>& sensorFootprint)
+                                                                  const std::unique_ptr<uxas::messages::task::SensorFootprint>& sensorFootprint,
+                                                                  std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest)
 {
     bool isSuccess(true);
 
@@ -516,108 +517,92 @@ bool PatternSearchTaskService::isCalculatePatternScanRoute_Spiral(std::shared_pt
     }
     else //if(m_isUseDpss)
     {
-        auto routePlan = std::make_shared<uxas::messages::route::RoutePlan>();
+        //auto routePlan = std::make_shared<uxas::messages::route::RoutePlan>();
         int64_t waypointNumber = 1;
-        double distance_m = 0.0;
-        double northLast_m = 0.0;
-        double eastLast_m = 0.0;
+        //double distance_m = 0.0;
+        double northLast_m = northStart_m;
+        double eastLast_m = eastStart_m;
         double startHeading_deg = 0;
-        double endHeading_deg = 0;
-
-        // SPIRAL:: r = a + b*Theta
-        //psi_rad = 0*np.pi
-        //laneWidth = 100
-        //m_waypointSpacing_m = 50;
-        //extent = 500
-        //rs= []
-        //thetas = []
-        //theta_rad = 0.0
-        //radius_m = 0
-        //while radius_m <= extent:
-        //    radius_m = 0.5*laneWidth * (1 + theta_rad/np.pi)
-        //    rs.append(radius_m)
-        //    thetas.append((theta_rad - psi_rad))
-        //    print 'theta_rad[{0}], radius[{1}]'.format(theta_rad,radius_m)
-        //    theta_rad = theta_rad + (m_waypointSpacing_m/radius_m)
-        double theta_rad = 0.0; //could be used to set a different starting heading
-        double radius_m = 0.0;
-        bool firstPass = true;
-        while (radius_m <= m_patternSearchTask->getExtent())
-        {
-            radius_m = 0.5 * pTaskOptionClass->m_laneSpacing_m * (1.0 + theta_rad / n_Const::c_Convert::dPi());
-            double north_m = (radius_m * sin(theta_rad - startHeading_deg)) + northStart_m;
-            double east_m = (radius_m * cos(theta_rad - startHeading_deg)) + eastStart_m;
-            double latitude_deg(0.0);
-            double longitude_deg(0.0);
-            if (firstPass)
-            {
-                // add a starting point that puts the leading edge of the sensor on the start of the spiral
-                northLast_m = north_m - sensorFootprint->getHorizontalToLeadingEdge() * cos(startHeading_deg);
-                eastLast_m = east_m - sensorFootprint->getHorizontalToLeadingEdge() * sin(startHeading_deg);
-                unitConversions.ConvertNorthEast_mToLatLong_deg(northLast_m, eastLast_m,
-                                                                latitude_deg, longitude_deg);
-                auto waypoint = new afrl::cmasi::Waypoint();
-                waypoint->setNumber(waypointNumber);
-                waypoint->setLatitude(latitude_deg);
-                waypoint->setLongitude(longitude_deg);
-                waypoint->setAltitude(pTaskOptionClass->m_altitude_m);
-                waypoint->setSpeed(pTaskOptionClass->m_speed_mps);
-                routePlan->getWaypoints().push_back(waypoint);
-
-                pTaskOptionClass->m_taskOption->setStartLocation(new afrl::cmasi::Location3D(*(waypoint)));
-                pTaskOptionClass->m_taskOption->setStartHeading(startHeading_deg);
-
-                waypoint = nullptr; // gave up ownership
-                waypointNumber++; // next waypoint
-            }
-            unitConversions.ConvertNorthEast_mToLatLong_deg(north_m, east_m,
-                                                            latitude_deg, longitude_deg);
-            auto waypoint = new afrl::cmasi::Waypoint();
-            waypoint->setNumber(waypointNumber);
-            waypoint->setLatitude(latitude_deg);
-            waypoint->setLongitude(longitude_deg);
-            waypoint->setAltitude(pTaskOptionClass->m_altitude_m);
-            waypoint->setSpeed(pTaskOptionClass->m_speed_mps);
-            routePlan->getWaypoints().push_back(waypoint);
-            waypoint = nullptr; // gave up ownership
-            waypointNumber++; // next waypoint
-            double deltaNorth_m = north_m - northLast_m;
-            double deltaEast_m = east_m - eastLast_m;
-            distance_m += pow((pow(deltaNorth_m, 2.0) + pow(deltaEast_m, 2.0)), 0.5);
-
-            if (radius_m > 0.0) // divide by zero check
-            {
-                assert(m_waypointSpacing_m > 0.0);
-                theta_rad += m_waypointSpacing_m / radius_m; // set the next theta based on the desired waypoint separation
-            }
-            if (radius_m > m_patternSearchTask->getExtent())
-            {
-                endHeading_deg = atan2(deltaEast_m, deltaNorth_m) * n_Const::c_Convert::dRadiansToDegrees();
-            }
-            northLast_m = north_m;
-            eastLast_m = east_m;
-            firstPass = false;
-        }
-
-        pTaskOptionClass->m_taskOption->setEndLocation(new afrl::cmasi::Location3D(*(routePlan->getWaypoints().back())));
-        pTaskOptionClass->m_taskOption->setEndHeading(endHeading_deg);
 
         int64_t routeId = TaskOptionClass::m_firstImplementationRouteId;
-        routePlan->setRouteID(routeId);
 
-        double cost_ms = static_cast<int64_t> (((pTaskOptionClass->m_speed_mps > 0.0) ? (distance_m / pTaskOptionClass->m_speed_mps) : (0.0))*1000.0);
-        routePlan->setRouteCost(cost_ms);
+        double sectionStep = pTaskOptionClass->m_laneSpacing_m;
+        double sectionLength = sectionStep;
+        double sectionDist = 0.0;
+        double latitude_deg(0.0);
+        double longitude_deg(0.0);
+        double prevLatitude_deg(0.0);
+        double prevLongitude_deg(0.0);
 
-        pTaskOptionClass->m_orderedRouteIdVsPlan[routePlan->getRouteID()] = routePlan;
+        unitConversions.ConvertNorthEast_mToLatLong_deg(northLast_m, eastLast_m,
+            latitude_deg, longitude_deg);
+        auto waypoint = new afrl::cmasi::Location3D();
+        waypoint->setLatitude(latitude_deg);
+        waypoint->setLongitude(longitude_deg);
+        waypoint->setAltitude(pTaskOptionClass->m_altitude_m);
 
-        pTaskOptionClass->m_taskOption->setStartLocation(new afrl::cmasi::Location3D(*(routePlan->getWaypoints().front())));
+        pTaskOptionClass->m_taskOption->setStartLocation(waypoint->clone());
         pTaskOptionClass->m_taskOption->setStartHeading(startHeading_deg);
-        pTaskOptionClass->m_taskOption->setEndLocation(new afrl::cmasi::Location3D(*(routePlan->getWaypoints().back())));
-        pTaskOptionClass->m_taskOption->setEndHeading(endHeading_deg);
+        while (sectionDist < m_patternSearchTask->getExtent())
+        {
+            prevLatitude_deg = latitude_deg;
+            prevLongitude_deg = longitude_deg;
+            //up leg
+            auto constraint = new uxas::messages::route::RouteConstraints;
+            unitConversions.ConvertNorthEast_mToLatLong_deg(northLast_m + sectionLength, eastLast_m,
+                latitude_deg, longitude_deg);
 
-        pTaskOptionClass->m_taskOption->setCost(cost_ms);
+            waypoint->setLatitude(prevLatitude_deg);
+            waypoint->setLongitude(prevLongitude_deg);
+            constraint->setStartLocation(waypoint->clone());
 
-        m_taskPlanOptions->getOptions().push_back(pTaskOptionClass->m_taskOption->clone());
+            northLast_m += sectionLength;
+            waypoint->setLatitude(latitude_deg);
+            waypoint->setLongitude(longitude_deg);
+            constraint->setEndLocation(waypoint->clone());
+
+            constraint->setUseStartHeading(false);
+            constraint->setUseEndHeading(false);
+            constraint->setRouteID(routeId);
+            routePlanRequest->getRouteRequests().push_back(constraint->clone());
+
+
+
+            //right leg
+            prevLatitude_deg = latitude_deg;
+            prevLongitude_deg = longitude_deg;
+            unitConversions.ConvertNorthEast_mToLatLong_deg(northLast_m, eastLast_m + sectionLength,
+                latitude_deg, longitude_deg);
+
+            waypoint->setLatitude(prevLatitude_deg);
+            waypoint->setLongitude(prevLongitude_deg);
+            constraint->setStartLocation(waypoint->clone());
+
+            eastLast_m += sectionLength;
+            waypoint->setLatitude(latitude_deg);
+            waypoint->setLongitude(longitude_deg);
+            constraint->setEndLocation(waypoint->clone());
+
+            constraint->setUseStartHeading(false);
+            constraint->setUseEndHeading(false);
+            constraint->setRouteID(routeId + 1);
+
+
+
+            routePlanRequest->getRouteRequests().push_back(constraint->clone());
+
+
+            pTaskOptionClass->m_pendingRouteIds.insert(routeId);
+            pTaskOptionClass->m_pendingRouteIds.insert(routeId + 1);
+
+            //setup for down and left legs
+            routeId += 2;
+            sectionLength += sectionStep;
+            sectionStep *= -1;
+            sectionLength *= -1;
+            sectionDist += sqrt(2) * abs(sectionStep);
+            startHeading_deg = ((int64_t)startHeading_deg + 180) % 360;
+        }
     } //if(m_isUseDpss)            
 
     return (isSuccess);
