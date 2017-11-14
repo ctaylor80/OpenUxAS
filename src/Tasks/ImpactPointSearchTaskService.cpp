@@ -311,8 +311,57 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
 	{
 		if (m_entityStates.find(taskImplementationResponse.get()->getVehicleID()) != m_entityStates.end())
 		{
+
+            auto action = m_pointSearchTask->getDesiredAction();
+
+            uxas::common::utilities::CUnitConversions flatEarth;
+            //remove waypoint inside the loiter action
+            auto targetWaypont = taskImplementationResponse->getTaskWaypoints().back()->clone();
+            while (!taskImplementationResponse->getTaskWaypoints().empty())
+            {
+                delete targetWaypont;
+                targetWaypont = taskImplementationResponse->getTaskWaypoints().back()->clone();
+                taskImplementationResponse->getTaskWaypoints().pop_back();
+                if (flatEarth.dGetLinearDistance_m_Lat1Long1_deg_To_Lat2Long2_deg(action->getLocation()->getLatitude(), action->getLocation()->getLongitude(),
+                    targetWaypont->getLatitude(), targetWaypont->getLongitude()) > action->getRadius())
+                {
+                    break;
+                }
+            }
+
+            //push target back
+            taskImplementationResponse->getTaskWaypoints().push_back(targetWaypont);
+
+            //add a new waypoint on the radius
+            double north, east;
+            flatEarth.ConvertLatLong_degToNorthEast_m(targetWaypont->getLatitude(), targetWaypont->getLongitude(), north, east);
+
+            double loiterNorth, loiterEast;
+            flatEarth.ConvertLatLong_degToNorthEast_m(action->getLocation()->getLatitude(), action->getLocation()->getLongitude(), loiterNorth, loiterEast);
+
+            auto p = VisiLibity::Point(north, east);
+            auto loiterCenter = VisiLibity::Point(loiterNorth, loiterEast);
+
+            auto vector = VisiLibity::Point::normalize(p - loiterCenter) * action->getRadius();
+
+            auto newPoint = loiterCenter + vector;
+            double latitude_deg(0.0);
+            double longitude_deg(0.0);
+            flatEarth.ConvertNorthEast_mToLatLong_deg(newPoint.x(), newPoint.y(), latitude_deg, longitude_deg);
+            afrl::cmasi::Waypoint *newwp = new afrl::cmasi::Waypoint();
+            newwp->setLatitude(latitude_deg);
+            newwp->setLongitude(longitude_deg);
+            newwp->setAltitude(targetWaypont->getAltitude());
+            newwp->setSpeed(targetWaypont->getSpeed());
+            newwp->setNumber(targetWaypont->getNumber() + 1);
+            targetWaypont->setNextWaypoint(newwp->getNumber());
+            //add action to the new waypoint
+            action->getLocation()->setAltitude(newwp->getAltitude());
+            newwp->getVehicleActionList().push_back(action->clone());
+
+            taskImplementationResponse->getTaskWaypoints().push_back(newwp);
+
 			auto lastWaypoint = taskImplementationResponse->getTaskWaypoints().back();
-			m_pointSearchTask->getDesiredAction()->getLocation()->setAltitude(lastWaypoint->getAltitude());
 
 			auto finalWaypoint = taskImplementationResponse->getTaskWaypoints().back();
 			finalWaypoint->getVehicleActionList().push_back(m_pointSearchTask->getDesiredAction()->clone());

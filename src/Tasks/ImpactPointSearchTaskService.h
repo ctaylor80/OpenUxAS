@@ -27,6 +27,7 @@
 #include "uxas/messages/task/TaskPlanOptions.h"
 #include "uxas/messages/task/TaskImplementationRequest.h"
 #include "uxas/messages/route/RoutePlan.h"
+#include "visilibity.h"
 
 #include <cstdint> // int64_t
 #include <unordered_set>
