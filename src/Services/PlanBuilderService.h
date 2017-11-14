@@ -27,6 +27,8 @@
 #include "uxas/messages/task/TaskImplementationResponse.h"
 #include "uxas/messages/task/PlanningState.h"
 #include "afrl/cmasi/EntityState.h"
+#include "afrl/cmasi/GimbalState.h"
+#include "afrl/cmasi/GimbalAngleAction.h"
 
 #include <cstdint> // int64_t
 #include <deque>

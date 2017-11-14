@@ -312,6 +312,22 @@ void PlanBuilderService::processTaskImplementationResponse(const std::shared_ptr
         mish->setFirstWaypoint(taskImplementationResponse->getTaskWaypoints().front()->getNumber());
         for(auto wp : taskImplementationResponse->getTaskWaypoints())
             mish->getWaypointList().push_back(wp->clone());
+        //set default camera view
+        auto state = m_currentEntityStates.find(taskImplementationResponse->getVehicleID());
+        if (state != m_currentEntityStates.end())
+        {
+            for (auto payload : state->second->getPayloadStateList())
+            {
+                if (afrl::cmasi::isGimbalState(payload))
+                {
+                    auto gaa = new afrl::cmasi::GimbalAngleAction();
+                    gaa->setPayloadID(payload->getPayloadID());
+                    gaa->setAzimuth(0.0);
+                    gaa->setElevation(-60.0);
+                    mish->getVehicleActionList().push_back(gaa);
+                }
+            }
+        }
         m_inProgressResponse[uniqueRequestID]->getOriginalResponse()->getMissionCommandList().push_back(mish);
     }
     
