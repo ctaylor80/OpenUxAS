@@ -245,6 +245,8 @@ main(int argc, char** argv)
         return (300);
     }
 
+    IMPACT_INFORM("Finished Loading ", cfgPath);
+
     UXAS_LOG_INFORM("UxAS_Main running ServiceManager");
     if(!runUntil_sec)
     {

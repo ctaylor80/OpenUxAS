@@ -49,7 +49,7 @@ int32_t ConfigurationManager::s_zeroMqReceiveSocketPollWaitTime_ms = 100;
 int64_t ConfigurationManager::s_entityStartTimeSinceEpoch_ms = 0;
 uint32_t ConfigurationManager::s_startDelay_ms = 0;
 uint32_t ConfigurationManager::s_runDuration_s = UINT32_MAX;
-bool ConfigurationManager::s_isLoggingThreadId{true};
+bool ConfigurationManager::s_isLoggingThreadId{false};
 
 uint32_t ConfigurationManager::s_entityId = 0;
 std::string ConfigurationManager::s_entityType{""};

@@ -611,7 +611,7 @@ bool CAlgebra::initAtomicObjectives(const v_action_t &atomicObjectiveIDs)
 bool CAlgebra::initAlgebraString(const std::string stringIn)
 {
     // Check the formula for syntax errors
-    printf("\nAlgebraString:: %s\n\n", stringIn.c_str());
+    //printf("\nAlgebraString:: %s\n\n", stringIn.c_str());
     if (checkFormulaSyntax(stringIn) == false)
     {
         return false;

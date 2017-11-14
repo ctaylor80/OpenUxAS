@@ -1566,7 +1566,7 @@ bool OsmPlannerService::isFindShortestRoute(const int64_t& startNodeId, const in
             m_searchTime_s = elapsed_seconds.count();
             UXAS_LOG_INFORM(" **** Finished running ASTAR search from startNodeId[" << startNodeId << "] to endNodeId[" << endNodeId << "] Elapsed Seconds[" << elapsed_seconds.count() << "] ****");
 
-#define PRINT_SHORTEST_PATH
+//#define PRINT_SHORTEST_PATH
 #ifdef PRINT_SHORTEST_PATH
             UXAS_LOG_INFORM("isFindShortestRoute:: Shortest path from startNodeId[" << startNodeId << "] to endNodeId[" << endNodeId << "] " << std::endl);
             for (auto itNode = pathNodes.begin(); itNode != pathNodes.end(); itNode++)
