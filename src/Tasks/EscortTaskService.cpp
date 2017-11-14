@@ -421,6 +421,12 @@ std::shared_ptr<afrl::cmasi::VehicleActionCommand> EscortTaskService::CalculateG
 
 void EscortTaskService::CalculateTargetPoint(std::shared_ptr<afrl::cmasi::Location3D>& targetLocation, double targetHeading, double targetSpeed, std::shared_ptr<afrl::impact::EscortTask>& task)
 {
+    //if standoff is zero, don't mess with the targetLocation
+    if (abs(task->getStandoffDistance() - .001) <  .1)
+    {
+        return;
+    }
+
     // decipher path that the supported entity is following
     std::vector<afrl::cmasi::Location3D*> path;
     if (task->getRouteID() == 0)
