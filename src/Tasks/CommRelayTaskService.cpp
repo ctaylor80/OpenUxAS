@@ -123,7 +123,6 @@ CommRelayTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp
         {
             m_supportedEntityStateLast = entityState;
         }
-        m_idVsEntityState[entityState->getID()] = entityState;
     }
     return (false); // always false implies never terminating service from here
 };
@@ -219,9 +218,9 @@ void CommRelayTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::
         int64_t towerId = m_CommRelayTask->getTowerID();
         std::shared_ptr<afrl::cmasi::Location3D> towerLocation{nullptr};
 
-        if (m_idVsEntityState.find(towerId) != m_idVsEntityState.end())
+        if (m_entityStates.find(towerId) != m_entityStates.end())
         {
-            towerLocation.reset(m_idVsEntityState[towerId]->getLocation()->clone());
+            towerLocation.reset(m_entityStates[towerId]->getLocation()->clone());
         }
 
         if (!towerLocation)

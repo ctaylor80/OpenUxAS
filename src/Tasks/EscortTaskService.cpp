@@ -127,7 +127,6 @@ EscortTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::O
         {
             m_supportedEntityStateLast = entityState;
         }
-        m_idVsEntityState[entityState->getID()] = entityState;
     }
     else if (afrl::cmasi::isAutomationResponse(receivedLmcpObject))
     {
@@ -202,11 +201,11 @@ bool EscortTaskService::isCalculateOption(const int64_t& taskId, int64_t& option
         std::shared_ptr<afrl::cmasi::Location3D> targetLocation;
         double targetHeading = 0.0;
         double targetSpeed = 0.0;
-        if (m_idVsEntityState.find(trackId) != m_idVsEntityState.end())
+        if (m_entityStates.find(trackId) != m_entityStates.end())
         {
-            targetLocation.reset(m_idVsEntityState[trackId]->getLocation()->clone());
-            targetHeading = m_idVsEntityState[trackId]->getHeading();
-            targetSpeed = m_idVsEntityState[trackId]->getGroundspeed();
+            targetLocation.reset(m_entityStates[trackId]->getLocation()->clone());
+            targetHeading = m_entityStates[trackId]->getHeading();
+            targetSpeed = m_entityStates[trackId]->getGroundspeed();
 
             CalculateTargetPoint(targetLocation, targetHeading, targetSpeed, m_escortTask);
 
@@ -300,7 +299,6 @@ void EscortTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::Ent
             auto act = actionCommand->getVehicleActionList().at(a);
             wp->getVehicleActionList().push_back(act->clone());
         }
-        missionCommand->getWaypointList().push_back(wp);
 
         // check if surface or ground vehicle
         if ((afrl::vehicles::isSurfaceVehicleState(entityState.get()) || afrl::vehicles::isGroundVehicleState(entityState.get())) && !missionCommand->getWaypointList().empty())
@@ -309,19 +307,13 @@ void EscortTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::Ent
             hwp->setNumber(2);
             hwp->setNextWaypoint(2);
             missionCommand->getWaypointList().front()->setNextWaypoint(2);
-            for (auto a : missionCommand->getWaypointList().front()->getVehicleActionList())
-            {
-                delete a;
-            }
+
             missionCommand->getWaypointList().front()->getVehicleActionList().clear();
             missionCommand->getWaypointList().push_back(hwp);
         }
         else
         {
-            for (auto wypt : missionCommand->getWaypointList())
-            {
-                delete wypt;
-            }
+
             missionCommand->getWaypointList().clear();
         }
 
@@ -335,7 +327,7 @@ void EscortTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::Ent
         }
         else
         {
-            delete missionCommand;
+            //delete missionCommand;
             pResponse = std::static_pointer_cast<avtas::lmcp::Object>(actionCommand);
         }
         sendSharedLmcpObjectBroadcastMessage(pResponse);
