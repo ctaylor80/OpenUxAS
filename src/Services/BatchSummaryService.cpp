@@ -195,8 +195,8 @@ namespace uxas
 
         void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& taskAutomationResponse)
         {
-            auto taskAutomationRequest = m_pendingTaskAutomationRequests.find(taskAutomationResponse->getResponseID());
 
+            auto taskAutomationRequest = m_pendingTaskAutomationRequests.find(taskAutomationResponse->getResponseID())->second;
 
             //iterate through taskAutomationResponse waypoints to reconstruct tasks.
             //this gives ordering and lists of waypoints to reconstruct costs.
@@ -224,26 +224,25 @@ namespace uxas
                         {
                             iteratingToTask = true;
                             auto taskEnd = wpIter;
-                            //create vehicle summary
-                            auto summary = std::make_shared<afrl::impact::VehicleSummary>();
-                            summary->setVehicleID(vehicle);
-                            summary->setDestinationTaskID(workingTask);
-                            summary->setInitialTaskID(prevTask);
-
-                            UpdateSummaryUtil(summary.get(), taskStart, taskEnd);
-                            UpdateSummary(summary.get(), taskStart, taskEnd);
-                            //set next taskStart
-                            taskStart = wpIter;
-
                             //get the right TaskSummary
                             for (auto workingResponse : m_workingResponse)
                             {
                                 auto workingTaskSummary = std::find_if(workingResponse.second->getSummaries().begin(), workingResponse.second->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == workingTask; });
                                 if (workingTaskSummary != workingResponse.second->getSummaries().end())
                                 {
-                                    (*workingTaskSummary)->getPerformingVehicles().push_back(summary->clone());
+                                    //get the right vehicleSummary
+                                    auto vehicleSummary = std::find_if((*workingTaskSummary)->getPerformingVehicles().begin(), (*workingTaskSummary)->getPerformingVehicles().end(), [&](const afrl::impact::VehicleSummary* x) {return x->getVehicleID() == vehicle; });
+                                    if (vehicleSummary != (*workingTaskSummary)->getPerformingVehicles().end())
+                                    {
+                                        UpdateSummaryUtil(*vehicleSummary, taskStart, taskEnd + 1);
+                                        UpdateSummary(*vehicleSummary, taskStart, taskEnd + 1);
+                                        (*vehicleSummary)->setInitialTaskID(prevTask);
+                                        (*vehicleSummary)->setDestinationTaskID(workingTask);
+                                    }
                                 }
                             }
+                            //set next taskStart
+                            taskStart = wpIter;
                         }
                     }
                 }
@@ -480,17 +479,38 @@ namespace uxas
 
             m_workingRequests[responseId] = request;
 
+            //go ahead and make TaskSummaries
+            for (auto task : request->getTaskList())
+            {
+                auto workingSummary = std::make_shared<afrl::impact::TaskSummary>();
+                workingSummary->setTaskID(task);
+                workingSummary->setBestEffort(100);
+                m_workingResponse[responseId]->getSummaries().push_back(workingSummary->clone());
+            }
+
             std::vector<std::shared_ptr<afrl::cmasi::AutomationRequest>> requests;
             if (request->getTaskRelationships().empty()) //no relationship. create a request per each vehicle task pair
             {
-                for (auto vehicle : request->getVehicles())
+                for (auto task : request->getTaskList())
                 {
-                    for (auto task : request->getTaskList())
+                    auto workingTaskSummary = std::find_if(m_workingResponse[responseId]->getSummaries().begin(), m_workingResponse[responseId]->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == task; });
+
+                    for (auto vehicle : request->getVehicles())
                     {
                         auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
                         automationRequest->getTaskList().push_back(task);
                         automationRequest->getEntityList().push_back(vehicle);
                         requests.push_back(automationRequest);
+
+                        auto summary = std::make_shared<afrl::impact::VehicleSummary>();
+                        summary->setVehicleID(vehicle);
+                        summary->setDestinationTaskID(-1);
+                        summary->setTimeOnTask(-1);
+                        summary->setTimeToArrive(-1);
+                        if (workingTaskSummary != m_workingResponse[responseId]->getSummaries().end())
+                        {
+                            (*workingTaskSummary)->getPerformingVehicles().push_back(summary->clone());
+                        }
                     }
                 }
             }
@@ -505,6 +525,17 @@ namespace uxas
                     for (auto task : request->getTaskList())
                     {
                         automationRequest->getTaskList().push_back(task);
+
+                        auto workingTaskSummary = std::find_if(m_workingResponse[responseId]->getSummaries().begin(), m_workingResponse[responseId]->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == task; });
+                        auto summary = std::make_shared<afrl::impact::VehicleSummary>();
+                        summary->setVehicleID(vehicle);
+                        summary->setDestinationTaskID(-1);
+                        summary->setTimeOnTask(-1);
+                        summary->setTimeToArrive(-1);
+                        if (workingTaskSummary != m_workingResponse[responseId]->getSummaries().end())
+                        {
+                            (*workingTaskSummary)->getPerformingVehicles().push_back(summary->clone());
+                        }
                     }
                     automationRequest->setTaskRelationships(request->getTaskRelationships());
                     automationRequest->getEntityList().push_back(vehicle);
@@ -512,14 +543,7 @@ namespace uxas
                 }
             }
 
-            //go ahead and make TaskSummaries
-            for (auto task : request->getTaskList())
-            {
-                auto workingSummary = std::make_shared<afrl::impact::TaskSummary>();
-                workingSummary->setTaskID(task);
-                workingSummary->setBestEffort(100);
-                m_workingResponse[responseId]->getSummaries().push_back(workingSummary->clone());
-            }
+
 
             //wrap requests up to send into TaskAutomationRequests
             for (auto requestToSend : requests)
@@ -540,6 +564,11 @@ namespace uxas
 
         void BatchSummaryService::UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end)
         {
+            if (task_begin == task_end)
+            {
+                return;
+            }
+
             uxas::common::utilities::CUnitConversions unitConversions;
 
             //clone waypoints
@@ -549,27 +578,25 @@ namespace uxas
             }
 
             //set timeOnTask and timeToArrive
-            afrl::cmasi::Waypoint* prev = nullptr;
+            afrl::cmasi::Waypoint* prev = *task_begin;
             double timeOnTask = 0.0;
             double timeToArrive = 0.0;
             bool onTask = false;
-            for (auto wp = task_begin; wp != task_end; wp++)
+            for (auto wp = task_begin + 1; wp != task_end; wp++)
             {
                 if (!(*wp)->getAssociatedTasks().empty())
                 {
                     onTask = true;
                 }
-                if (prev)
+
+                auto timeFromPrev = unitConversions.dGetLinearDistance_m_Lat1Long1_deg_To_Lat2Long2_deg(prev->getLatitude(), prev->getLongitude(), (*wp)->getLatitude(), (*wp)->getLongitude()) / (*wp)->getSpeed();
+                if (onTask)
                 {
-                    auto timeFromPrev = unitConversions.dGetLinearDistance_m_Lat1Long1_deg_To_Lat2Long2_deg(prev->getLatitude(), prev->getLongitude(), (*wp)->getLatitude(), (*wp)->getLongitude()) / (*wp)->getSpeed();
-                    if (onTask)
-                    {
-                        timeOnTask += timeFromPrev;
-                    }
-                    else
-                    {
-                        timeToArrive += timeFromPrev;
-                    }
+                    timeOnTask += timeFromPrev;
+                }
+                else
+                {
+                    timeToArrive += timeFromPrev;
                 }
                 prev = *wp;
             }
