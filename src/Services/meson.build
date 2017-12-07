@@ -17,10 +17,10 @@ srcs_services = [
   'SerialAutomationRequestTestService.cpp',
   'ServiceBase.cpp',
   'ServiceManager.cpp',
-  'TcpBridge.cpp',
   'Test_SimulationTime.cpp',
   'RoutePlannerVisibilityService.cpp',
   'WaypointPlanManagerService.cpp',
+  'SimpleWaypointPlanManagerService.cpp',
 ]
 
 incs_services = [
