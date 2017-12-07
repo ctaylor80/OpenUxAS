@@ -710,6 +710,7 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                                     }
                                     // disassociate the last waypoint in the plan from the tasks, allows tasks to complete
                                     auto waypointLast = taskImplementationResponse->getTaskWaypoints().back()->clone();
+                                    taskImplementationResponse->getTaskWaypoints().back()->getVehicleActionList().clear();
                                     auto newNumber = waypointLast->getNumber() + 1;
                                     waypointLast->setNumber(newNumber);
                                     waypointLast->setNextWaypoint(newNumber);
