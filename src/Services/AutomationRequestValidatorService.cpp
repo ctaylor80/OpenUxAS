@@ -392,11 +392,7 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
         auto baseTask = std::dynamic_pointer_cast<afrl::cmasi::Task>(receivedLmcpMessage->m_object);
         if (baseTask)
         {
-            if (m_availableTasks.find(baseTask->getTaskID()) != m_availableTasks.end() &&
-                m_availableStartedTaskIds.find(baseTask->getTaskID()) != m_availableStartedTaskIds.end())
-            {
-                m_availableStartedTaskIds.erase(baseTask->getTaskID()); //in case there is a new task with a previously used taskID
-            }
+            m_availableStartedTaskIds.erase(baseTask->getTaskID());
             m_availableTasks[baseTask->getTaskID()] = baseTask;
         }
         isMessageHandled = true;
@@ -723,7 +719,7 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
         keyValuePair->setValue(reasonForFailure.str());
         serviceStatus->getInfo().push_back(keyValuePair);
         keyValuePair = nullptr;
-        //sendSharedLmcpObjectBroadcastMessage(serviceStatus);
+        sendSharedLmcpObjectBroadcastMessage(serviceStatus);
     }
 
     return (isReady);
