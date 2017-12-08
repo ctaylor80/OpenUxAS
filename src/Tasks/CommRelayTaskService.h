@@ -32,6 +32,7 @@
 #include <cstdint> // int64_t
 #include <unordered_set>
 #include <unordered_map>
+#include "DynamicTaskServiceBase.h"
 
 namespace uxas
 {
@@ -131,7 +132,7 @@ namespace task
  * 
  */
 
-class CommRelayTaskService : public TaskServiceBase
+class CommRelayTaskService : public DynamicTaskServiceBase
 {
 public:
 
@@ -179,13 +180,15 @@ private:
     void operator=(CommRelayTaskService const&) = delete;
 
     bool
-    configureTask(const pugi::xml_node& serviceXmlNode) override;
+    configureDynamicTask(const pugi::xml_node& serviceXmlNode) override;
     
     bool
-    processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
+    processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
 
-    virtual void activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState) override;
     virtual void buildTaskPlanOptions() override;
+    virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
+    virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) override;
+
 
 private:
     bool isCalculateOption(const int64_t& taskId, int64_t& optionId);

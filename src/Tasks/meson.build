@@ -21,6 +21,7 @@ srcs_tasks = [
   'TaskTrackerService.cpp',
   'MustFlyTaskService.cpp',
   'LoiterTaskService.cpp',
+  'DynamicTaskServiceBase.cpp'
 ]
 
 incs_tasks = [

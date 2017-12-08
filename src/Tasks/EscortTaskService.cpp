@@ -32,13 +32,9 @@
 #include "afrl/vehicles/SurfaceVehicleConfiguration.h"
 #include "afrl/vehicles/GroundVehicleState.h"
 #include "afrl/vehicles/SurfaceVehicleState.h"
-#include "uxas/messages/task/TaskImplementationResponse.h"
 #include "uxas/messages/task/TaskOption.h"
-#include "uxas/messages/route/RouteRequest.h"
-#include "uxas/messages/route/RouteResponse.h"
-#include "uxas/messages/route/RouteConstraints.h"
 
-#include "pugixml.hpp"
+
 #include "Constants/Convert.h"
 #include "DpssDataTypes.h"
 #include "TimeUtilities.h"
@@ -46,11 +42,6 @@
 #include <sstream>      //std::stringstream
 #include <iostream>     // std::cout, cerr, etc
 
-
-#define STRING_XML_ENTITY_STATES "EntityStates" //TODO:: define this in some global place
-
-#define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "ESCT-ESCT-ESCT-ESCT:: EscortTask:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
-#define CERR_FILE_LINE_MSG(MESSAGE) std::cerr << "ESCT-ESCT-ESCT-ESCT:: EscortTask:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cerr.flush();
 
 
 namespace uxas
@@ -63,9 +54,8 @@ EscortTaskService::ServiceBase::CreationRegistrar<EscortTaskService>
 EscortTaskService::s_registrar(EscortTaskService::s_registryServiceTypeNames());
 
 EscortTaskService::EscortTaskService()
-: TaskServiceBase(EscortTaskService::s_typeName(), EscortTaskService::s_directoryName())
+: DynamicTaskServiceBase(EscortTaskService::s_typeName(), EscortTaskService::s_directoryName())
 {
-	m_isMakeTransitionWaypointsActive = true;
 };
 
 EscortTaskService::~EscortTaskService()
@@ -73,10 +63,12 @@ EscortTaskService::~EscortTaskService()
 };
 
 bool
-EscortTaskService::configureTask(const pugi::xml_node& ndComponent)
+EscortTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
 
 {
     std::string strBasePath = m_workDirectoryPath;
+    uint32_t ui32EntityID = m_entityId;
+    uint32_t ui32LmcpMessageSize_max = 100000;
     std::stringstream sstrErrors;
 
     bool isSuccessful(true);
@@ -88,15 +80,13 @@ EscortTaskService::configureTask(const pugi::xml_node& ndComponent)
             m_escortTask = std::static_pointer_cast<afrl::impact::EscortTask>(m_task);
             if (!m_escortTask)
             {
-                sstrErrors << "ERROR:: **EscortTaskService::bConfigure failed to cast a EscortTask from the task pointer." << std::endl;
-                CERR_FILE_LINE_MSG(sstrErrors.str())
+				UXAS_LOG_ERROR("**EscortTaskService::bConfigure failed to cast a EscortTask from the task pointer.");
                 isSuccessful = false;
             }
         }
         else
         {
-            sstrErrors << "ERROR:: **EscortTaskService::bConfigure failed: taskObject[" << m_task->getFullLmcpTypeName() << "] is not a EscortTask." << std::endl;
-            CERR_FILE_LINE_MSG(sstrErrors.str())
+			UXAS_LOG_ERROR("ERROR:: **EscortTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a EscortTask.");
             isSuccessful = false;
         }
     } //isSuccessful
@@ -106,6 +96,11 @@ EscortTaskService::configureTask(const pugi::xml_node& ndComponent)
 		{
 			m_supportedEntityStateLast = m_entityStates[m_escortTask->getSupportedEntityID()];
 		}
+        else
+        {
+            UXAS_LOG_ERROR("escort supported entity ", m_escortTask->getSupportedEntityID(), "does not exist at task creation");
+        }
+
     } //if(isSuccessful)
 
     addSubscriptionAddress(afrl::cmasi::MissionCommand::Subscription);
@@ -116,8 +111,8 @@ EscortTaskService::configureTask(const pugi::xml_node& ndComponent)
     return (isSuccessful);
 }
 
-bool
-EscortTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
+
+bool EscortTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
 //example: if (afrl::cmasi::isServiceStatus(receivedLmcpObject))
 {
     auto entityState = std::dynamic_pointer_cast<afrl::cmasi::EntityState>(receivedLmcpObject);
@@ -157,7 +152,7 @@ EscortTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::O
         m_linesOfInterest[loi->getLineID()] = loi;
     }
     return (false); // always false implies never terminating service from here
-};
+}
 
 void EscortTaskService::buildTaskPlanOptions()
 {
@@ -224,124 +219,73 @@ bool EscortTaskService::isCalculateOption(const int64_t& taskId, int64_t& option
         }
         else
         {
-            // ERROR: could not find entity location that was requested to be tracked 
+            // ERROR: could not find entity location that was requested to be tracked
+            UXAS_LOG_ERROR("Could not find location for entity ", trackId);
             isSuccessful = false;
         }
     }
     else
     {
-        CERR_FILE_LINE_MSG("ERROR::Task_EscortTask:: no watchedEntityState found for Entity[" << m_escortTask->getSupportedEntityID() << "]")
+		UXAS_LOG_ERROR("ERROR::Task_EscortTask:: no watchedEntityState found for Entity[" + std::to_string(m_escortTask->getSupportedEntityID()) + "]");
         isSuccessful = false;
     }
 
     return (isSuccessful);
 }
 
-void EscortTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState)
+void EscortTaskService::processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand> mish)
 {
-    if (m_supportedEntityStateLast)
+
+    auto targetLocation = this->m_targetLocations[mish->getVehicleID()];
+    auto state = m_entityStates[mish->getVehicleID()];
+
+    //dont add action commands for surface or ground vehicles
+    //TODO: check if these really should be excluded
+    if (afrl::vehicles::isSurfaceVehicleState(state.get()) || afrl::vehicles::isGroundVehicleState(state.get()) || mish->getWaypointList().empty())
     {
-        // extract location of desired entity to track
-        std::shared_ptr<afrl::cmasi::Location3D> targetLocation;
-        double targetHeading = 0.0;
-        double targetSpeed = 0.0;
-
-        targetLocation.reset(m_supportedEntityStateLast->getLocation()->clone());
-        targetHeading = m_supportedEntityStateLast->getHeading();
-        targetSpeed = m_supportedEntityStateLast->getGroundspeed();
-
-        // initialize throttle per vehicle
-        if (m_throttle.find(entityState->getID()) == m_throttle.end())
-        {
-            m_throttle[entityState->getID()] = uxas::common::utilities::c_TimeUtilities::getTimeNow_ms();
-        }
-
-        // only send out every 2 seconds (even on fast simulation mode)
-        if (!afrl::vehicles::isGroundVehicleState(entityState.get()) || m_throttle[entityState->getID()] + 2000 <= uxas::common::utilities::c_TimeUtilities::getTimeNow_ms())
-        {
-            m_throttle[entityState->getID()] = uxas::common::utilities::c_TimeUtilities::getTimeNow_ms();
-        }
-        else
-        {
-            return;
-        }
-
-        // look up speed to use for commanding vehicle
-        double speed = entityState->getGroundspeed();
-        if (m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
-        {
-            speed = m_entityConfigurations[entityState->getID()]->getNominalSpeed();
-        }
-
-        CalculateTargetPoint(targetLocation, targetHeading, targetSpeed, m_escortTask);
-
-        auto actionCommand = CalculateGimbalActions(entityState, targetLocation->getLatitude(), targetLocation->getLongitude());
-
-        // build mini-mission of two waypoint with hover action at end
-        auto missionCommand = new afrl::cmasi::MissionCommand;
-        missionCommand->setCommandID(getUniqueEntitySendMessageId());
-        missionCommand->setFirstWaypoint(1);
-        missionCommand->setVehicleID(entityState->getID());
-        auto wp = new afrl::cmasi::Waypoint;
-        wp->setAltitude(entityState->getLocation()->getAltitude());
-        wp->setAltitudeType(entityState->getLocation()->getAltitudeType());
-        wp->setLatitude(targetLocation->getLatitude());
-        wp->setLongitude(targetLocation->getLongitude());
-        wp->setNextWaypoint(1);
-        wp->setNumber(1);
-        wp->setSpeed(speed);
-        wp->setTurnType(afrl::cmasi::TurnType::TurnShort);
-        wp->getAssociatedTasks().push_back(m_task->getTaskID());
-        missionCommand->getWaypointList().push_back(wp);
-
-        for (size_t a = 0; a < actionCommand->getVehicleActionList().size(); a++)
-        {
-            auto act = actionCommand->getVehicleActionList().at(a);
-            wp->getVehicleActionList().push_back(act->clone());
-        }
-
-        // check if surface or ground vehicle
-        if ((afrl::vehicles::isSurfaceVehicleState(entityState.get()) || afrl::vehicles::isGroundVehicleState(entityState.get())) && !missionCommand->getWaypointList().empty())
-        {
-            afrl::cmasi::Waypoint* hwp = wp->clone();
-            hwp->setNumber(2);
-            hwp->setNextWaypoint(2);
-            missionCommand->getWaypointList().front()->setNextWaypoint(2);
-
-            missionCommand->getWaypointList().front()->getVehicleActionList().clear();
-            missionCommand->getWaypointList().push_back(hwp);
-        }
-        else
-        {
-
-            missionCommand->getWaypointList().clear();
-        }
-
-        // send response
-        std::shared_ptr<avtas::lmcp::Object> pResponse;
-
-        // single waypoint mission command instead of action (if possible)
-        if (!missionCommand->getWaypointList().empty())
-        {
-            pResponse = std::shared_ptr<avtas::lmcp::Object>(missionCommand);
-        }
-        else
-        {
-            //delete missionCommand;
-            pResponse = std::static_pointer_cast<avtas::lmcp::Object>(actionCommand);
-        }
-        sendSharedLmcpObjectBroadcastMessage(pResponse);
+        return;
     }
-    else
+
+    auto actionCommand = CalculateGimbalActions(state, targetLocation->getLatitude(), targetLocation->getLongitude());
+
+    auto firstWaypoint = mish->getWaypointList().front();
+
+    for (auto action : actionCommand->getVehicleActionList())
     {
-        CERR_FILE_LINE_MSG("ERROR::Task_EscortTask:: no watchedEntityState found for Entity[" << m_escortTask->getSupportedEntityID() << "]")
+        firstWaypoint->getVehicleActionList().push_back(action->clone());
     }
+
 }
+
+
+std::shared_ptr<afrl::cmasi::Location3D> EscortTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
+{
+    std::shared_ptr<afrl::cmasi::Location3D> targetLocation;
+    if (!m_supportedEntityStateLast) {
+        return targetLocation;
+    }
+    double targetHeading = 0.0;
+    double targetSpeed = 0.0;
+
+    targetLocation.reset(m_supportedEntityStateLast->getLocation()->clone());
+    targetHeading = m_supportedEntityStateLast->getHeading();
+    targetSpeed = m_supportedEntityStateLast->getGroundspeed();
+
+    double speed = entityState->getGroundspeed();
+    if (m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
+    {
+        speed = m_entityConfigurations[entityState->getID()]->getNominalSpeed();
+    }
+
+    CalculateTargetPoint(targetLocation, targetHeading, targetSpeed, m_escortTask);
+    return targetLocation;
+}
+
 
 std::shared_ptr<afrl::cmasi::VehicleActionCommand> EscortTaskService::CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon)
 {
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> caction(new afrl::cmasi::VehicleActionCommand);
-	caction->setVehicleID(entityState->getID());
+    caction->setVehicleID(entityState->getID());
 
     double surveyRadius = m_loiterRadius_m;
     double surveySpeed = entityState->getGroundspeed();
@@ -455,7 +399,7 @@ void EscortTaskService::CalculateTargetPoint(std::shared_ptr<afrl::cmasi::Locati
                 if (fabs(targetSpeed) < 1.0)
                 {
                     // target is stationary, reverse the line if closer to end than beginning
-                    uxas::common::utilities::CUnitConversions flatEarth;
+                    common::utilities::CUnitConversions flatEarth;
                     double north, east;
 
                     flatEarth.ConvertLatLong_degToNorthEast_m(targetLocation->getLatitude(), targetLocation->getLongitude(), north, east);
@@ -511,7 +455,7 @@ void EscortTaskService::CalculateTargetPoint(std::shared_ptr<afrl::cmasi::Locati
     if (!path.empty())
     {
         // project current target location onto path, linearize first
-        uxas::common::utilities::CUnitConversions flatEarth;
+        common::utilities::CUnitConversions flatEarth;
         double north, east;
 
         flatEarth.ConvertLatLong_degToNorthEast_m(targetLocation->getLatitude(), targetLocation->getLongitude(), north, east);
@@ -642,7 +586,7 @@ void EscortTaskService::CalculateTargetPoint(std::shared_ptr<afrl::cmasi::Locati
 
 double EscortTaskService::DistanceToLine(std::shared_ptr<afrl::cmasi::Location3D>& loc, std::shared_ptr<afrl::impact::LineOfInterest>& path)
 {
-    uxas::common::utilities::CUnitConversions flatEarth;
+    common::utilities::CUnitConversions flatEarth;
     double north, east;
 
     flatEarth.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
@@ -672,7 +616,7 @@ double EscortTaskService::DistanceToLine(std::shared_ptr<afrl::cmasi::Location3D
 
 bool EscortTaskService::FlipLine(std::shared_ptr<afrl::cmasi::Location3D>& loc, double heading, std::shared_ptr<afrl::impact::LineOfInterest>& path)
 {
-    uxas::common::utilities::CUnitConversions flatEarth;
+    common::utilities::CUnitConversions flatEarth;
     double north, east;
 
     flatEarth.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);

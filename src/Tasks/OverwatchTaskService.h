@@ -31,6 +31,7 @@
 #include <cstdint> // int64_t
 #include <unordered_set>
 #include <unordered_map>
+#include "DynamicTaskServiceBase.h"
 
 namespace uxas
 {
@@ -113,7 +114,7 @@ namespace task
  */
 
 
-class OverwatchTaskService : public TaskServiceBase
+class OverwatchTaskService : public DynamicTaskServiceBase
 {
 public:
 
@@ -157,12 +158,12 @@ private:
     /** brief Copy assignment operation not permitted */
     void operator=(OverwatchTaskService const&) = delete;
 
-    bool
-    configureTask(const pugi::xml_node& serviceXmlNode) override;
-    bool
-    processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
-    
-    virtual void activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState) override;
+    virtual bool configureDynamicTask(const pugi::xml_node& serviceXmlNode);
+    virtual bool processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
+
+    virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
+    virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) override;
+
     virtual void buildTaskPlanOptions() override;
 
 private:

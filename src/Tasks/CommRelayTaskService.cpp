@@ -30,29 +30,17 @@
 #include "afrl/vehicles/GroundVehicleConfiguration.h"
 #include "afrl/vehicles/SurfaceVehicleConfiguration.h"
 #include "afrl/impact/RadioTowerConfiguration.h"
-#include "afrl/cmasi/AirVehicleState.h"
-#include "afrl/vehicles/GroundVehicleState.h"
-#include "afrl/vehicles/SurfaceVehicleState.h"
 #include "afrl/impact/RadioTowerState.h"
 #include "uxas/messages/task/TaskImplementationResponse.h"
 #include "uxas/messages/task/TaskOption.h"
-#include "uxas/messages/route/RouteRequest.h"
-#include "uxas/messages/route/RouteResponse.h"
-#include "uxas/messages/route/RouteConstraints.h"
 
-#include "pugixml.hpp"
+
 #include "Constants/Convert.h"
 #include "DpssDataTypes.h"
 #include "TimeUtilities.h"
 
 #include <sstream>      //std::stringstream
-#include <iostream>     // std::cout, cerr, etc
 
-
-#define STRING_XML_ENTITY_STATES "EntityStates" //TODO:: define this in some global place
-
-#define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "MVWT-MVWT-MVWT-MVWT:: CommRelayTask:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
-#define CERR_FILE_LINE_MSG(MESSAGE) std::cerr << "MVWT-MVWT-MVWT-MVWT:: CommRelayTask:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cerr.flush();
 
 
 namespace uxas
@@ -65,9 +53,8 @@ CommRelayTaskService::ServiceBase::CreationRegistrar<CommRelayTaskService>
 CommRelayTaskService::s_registrar(CommRelayTaskService::s_registryServiceTypeNames());
 
 CommRelayTaskService::CommRelayTaskService()
-: TaskServiceBase(CommRelayTaskService::s_typeName(), CommRelayTaskService::s_directoryName())
+: DynamicTaskServiceBase(CommRelayTaskService::s_typeName(), CommRelayTaskService::s_directoryName())
 {
-	m_isMakeTransitionWaypointsActive = true;
 };
 
 CommRelayTaskService::~CommRelayTaskService()
@@ -75,7 +62,7 @@ CommRelayTaskService::~CommRelayTaskService()
 };
 
 bool
-CommRelayTaskService::configureTask(const pugi::xml_node& ndComponent)
+CommRelayTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
 
 {
     std::string strBasePath = m_workDirectoryPath;
@@ -90,15 +77,13 @@ CommRelayTaskService::configureTask(const pugi::xml_node& ndComponent)
             m_CommRelayTask = std::static_pointer_cast<afrl::impact::CommRelayTask>(m_task);
             if (!m_CommRelayTask)
             {
-                sstrErrors << "ERROR:: **CommRelayTaskService::bConfigure failed to cast a CommRelayTask from the task pointer." << std::endl;
-                CERR_FILE_LINE_MSG(sstrErrors.str())
+				UXAS_LOG_ERROR("**CommRelayTaskService::bConfigure failed to cast a CommRelayTask from the task pointer.");
                 isSuccessful = false;
             }
         }
         else
         {
-            sstrErrors << "ERROR:: **CommRelayTaskService::bConfigure failed: taskObject[" << m_task->getFullLmcpTypeName() << "] is not a CommRelayTask." << std::endl;
-            CERR_FILE_LINE_MSG(sstrErrors.str())
+			UXAS_LOG_ERROR("**CommRelayTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a CommRelayTask.");
             isSuccessful = false;
         }
     } //isSuccessful
@@ -108,12 +93,31 @@ CommRelayTaskService::configureTask(const pugi::xml_node& ndComponent)
 		{
 			m_supportedEntityStateLast = m_entityStates[m_CommRelayTask->getSupportedEntityID()];
 		}
+        else
+        {
+            UXAS_LOG_ERROR("**CommRelayTaskService: supportedEntityID ", m_CommRelayTask->getSupportedEntityID(), " does not exist");
+        }
+        auto towerId = m_CommRelayTask->getTowerID();
+        if (m_entityStates.find(towerId) == m_entityStates.end())
+        {
+            UXAS_LOG_ERROR("**CommRelayTaskService: tower with ID ", towerId, " does not exist");
+        }
+
+        if (m_entityConfigurations.find(towerId) != m_entityConfigurations.end())
+        {
+            if (!afrl::impact::isRadioTowerConfiguration(m_entityConfigurations[towerId].get()))
+            {
+                UXAS_LOG_ERROR("**CommRelayTaskService: entity with ID ", towerId, " is not a radio tower");
+            }
+        }
+
     } //if(isSuccessful)
+
     return (isSuccessful);
 }
 
 bool
-CommRelayTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
+CommRelayTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
 //example: if (afrl::cmasi::isServiceStatus(receivedLmcpObject))
 {
     auto entityState = std::dynamic_pointer_cast<afrl::cmasi::EntityState>(receivedLmcpObject);
@@ -156,7 +160,67 @@ void CommRelayTaskService::buildTaskPlanOptions()
         auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
         sendSharedLmcpObjectBroadcastMessage(newResponse);
     }
-};
+}
+
+std::shared_ptr<afrl::cmasi::Location3D> CommRelayTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
+{
+    auto middle = std::shared_ptr<afrl::cmasi::Location3D>(entityState->getLocation()->clone());
+    if (m_supportedEntityStateLast)
+    {
+        // look up speed to use for commanding vehicle
+        double alt = entityState->getLocation()->getAltitude();
+        if (m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
+        {
+            alt = m_entityConfigurations[entityState->getID()]->getNominalAltitude();
+        }
+
+        // extract location of tower
+        int64_t towerId = m_CommRelayTask->getTowerID();
+        std::shared_ptr<afrl::cmasi::Location3D> towerLocation{ nullptr };
+        if (m_entityStates.find(towerId) != m_entityStates.end())
+        {
+            towerLocation.reset(m_entityStates[towerId]->getLocation()->clone());
+        }
+
+        if (!towerLocation)
+        {
+            if (m_entityConfigurations.find(towerId) != m_entityConfigurations.end())
+            {
+                if (afrl::impact::isRadioTowerConfiguration(m_entityConfigurations[towerId].get()))
+                {
+                    auto config = std::static_pointer_cast<afrl::impact::RadioTowerConfiguration>(m_entityConfigurations[towerId]);
+                    towerLocation.reset(config->getPosition()->clone());
+                }
+            }
+        }
+
+        if (!towerLocation) // don't care if not enabled, still attempt relay
+            return middle;
+
+        // determine destination location
+        uxas::common::utilities::CUnitConversions flatEarth;
+        double north, east;
+        flatEarth.ConvertLatLong_degToNorthEast_m(towerLocation->getLatitude(), towerLocation->getLongitude(), north, east);
+        Dpss_Data_n::xyPoint tower(east, north);
+        flatEarth.ConvertLatLong_degToNorthEast_m(m_supportedEntityStateLast->getLocation()->getLatitude(), m_supportedEntityStateLast->getLocation()->getLongitude(), north, east);
+        Dpss_Data_n::xyPoint target(east, north);
+
+        // go halfway between 'targetLocation' and 'tower' TODO: make this more efficient?
+        target.x = (tower.x + target.x) / 2;
+        target.y = (tower.y + target.y) / 2;
+
+        // back to lat/lon
+        double lat, lon;
+        flatEarth.ConvertNorthEast_mToLatLong_deg(target.y, target.x, lat, lon);
+
+        //auto loc = std::make_shared<afrl::cmasi::Location3D>();
+        middle->setLatitude(lat);
+        middle->setLongitude(lon);
+        middle->setAltitude(alt);
+
+    }
+    return middle;
+}
 
 bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & optionId)
 {
@@ -180,147 +244,38 @@ bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & op
     }
     else
     {
-        CERR_FILE_LINE_MSG("ERROR::Task_CommRelayTask:: no watchedEntityState found for Entity[" << m_CommRelayTask->getSupportedEntityID() << "]")
+		UXAS_LOG_ERROR("Task_CommRelayTask:: no watchedEntityState found for Entity[" + std::to_string(m_CommRelayTask->getSupportedEntityID()) + "]");
         isSuccessful = false;
     }
 
     return (isSuccessful);
 }
 
-void CommRelayTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState)
+
+
+void CommRelayTaskService::processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand> mission)
 {
-    if (m_supportedEntityStateLast)
+    if (mission->getWaypointList().empty())
     {
-        // initialize throttle per vehicle
-        if (m_throttle.find(entityState->getID()) == m_throttle.end())
-        {
-            m_throttle[entityState->getID()] = uxas::common::utilities::c_TimeUtilities::getTimeNow_ms();
-        }
-
-        // only send out every 2 seconds (even on fast simulation mode)
-        if (!afrl::vehicles::isGroundVehicleState(entityState.get()) || m_throttle[entityState->getID()] + 2000 <= uxas::common::utilities::c_TimeUtilities::getTimeNow_ms())
-        {
-            m_throttle[entityState->getID()] = uxas::common::utilities::c_TimeUtilities::getTimeNow_ms();
-        }
-        else
-        {
-            return;
-        }
-
-        // look up speed to use for commanding vehicle
-        double speed = entityState->getGroundspeed();
-        if (m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
-        {
-            speed = m_entityConfigurations[entityState->getID()]->getNominalSpeed();
-        }
-
-        // extract location of tower
-        int64_t towerId = m_CommRelayTask->getTowerID();
-        std::shared_ptr<afrl::cmasi::Location3D> towerLocation{nullptr};
-
-        if (m_entityStates.find(towerId) != m_entityStates.end())
-        {
-            towerLocation.reset(m_entityStates[towerId]->getLocation()->clone());
-        }
-
-        if (!towerLocation)
-        {
-            if (m_entityConfigurations.find(towerId) != m_entityConfigurations.end())
-            {
-                if (afrl::impact::isRadioTowerConfiguration(m_entityConfigurations[towerId].get()))
-                {
-                    auto config = std::static_pointer_cast<afrl::impact::RadioTowerConfiguration>(m_entityConfigurations[towerId]);
-                    towerLocation.reset(config->getPosition()->clone());
-                }
-            }
-        }
-
-        if (!towerLocation) // don't care if not enabled, still attempt relay
-            return;
-
-        // determine destination location
-        uxas::common::utilities::CUnitConversions flatEarth;
-        double north, east;
-        flatEarth.ConvertLatLong_degToNorthEast_m(towerLocation->getLatitude(), towerLocation->getLongitude(), north, east);
-        Dpss_Data_n::xyPoint tower(east, north);
-        flatEarth.ConvertLatLong_degToNorthEast_m(m_supportedEntityStateLast->getLocation()->getLatitude(), m_supportedEntityStateLast->getLocation()->getLongitude(), north, east);
-        Dpss_Data_n::xyPoint target(east, north);
-
-        // go halfway between 'targetLocation' and 'tower' TODO: make this more efficient?
-        target.x = (tower.x + target.x) / 2;
-        target.y = (tower.y + target.y) / 2;
-
-        // back to lat/lon
-        double lat, lon;
-        flatEarth.ConvertNorthEast_mToLatLong_deg(target.y, target.x, lat, lon);
-
-        // at this point, all neighbors have valid positions and are considered cooperating on task
-        auto actionCommand = CalculateGimbalActions(entityState, lat, lon);
-
-        // build mini-mission of two waypoint with hover action at end
-        auto missionCommand = new afrl::cmasi::MissionCommand;
-        missionCommand->setCommandID(getUniqueEntitySendMessageId());
-        missionCommand->setFirstWaypoint(1);
-        missionCommand->setVehicleID(entityState->getID());
-		auto wp = std::make_shared<afrl::cmasi::Waypoint>();
-        wp->setAltitude(entityState->getLocation()->getAltitude());
-        wp->setAltitudeType(entityState->getLocation()->getAltitudeType());
-        wp->setLatitude(lat);
-        wp->setLongitude(lon);
-        wp->setNextWaypoint(1);
-        wp->setNumber(1);
-        wp->setSpeed(speed);
-        wp->setTurnType(afrl::cmasi::TurnType::TurnShort);
-        wp->getAssociatedTasks().push_back(m_task->getTaskID());
-        missionCommand->getWaypointList().push_back(wp->clone());
-
-        for (size_t a = 0; a < actionCommand->getVehicleActionList().size(); a++)
-        {
-            auto act = actionCommand->getVehicleActionList().at(a);
-            wp->getVehicleActionList().push_back(act->clone());
-        }
-        missionCommand->getWaypointList().push_back(wp->clone());
-
-        // check if surface or ground vehicle
-        if ((afrl::vehicles::isSurfaceVehicleState(entityState.get()) || afrl::vehicles::isGroundVehicleState(entityState.get())) && !missionCommand->getWaypointList().empty())
-        {
-            afrl::cmasi::Waypoint* hwp = wp->clone();
-            hwp->setNumber(2);
-            hwp->setNextWaypoint(2);
-            missionCommand->getWaypointList().front()->setNextWaypoint(2);
-
-            missionCommand->getWaypointList().front()->getVehicleActionList().clear();
-            missionCommand->getWaypointList().push_back(hwp);
-        }
-        else
-        {
-            missionCommand->getWaypointList().clear();
-        }
-
-        // send response
-        std::shared_ptr<avtas::lmcp::Object> pResponse;
-
-        // single waypoint mission command instead of action (if possible)
-        if (!missionCommand->getWaypointList().empty())
-        {
-            pResponse = std::shared_ptr<avtas::lmcp::Object>(missionCommand);
-        }
-        else
-        {
-            pResponse = std::static_pointer_cast<avtas::lmcp::Object>(actionCommand);
-        }
-        sendSharedLmcpObjectBroadcastMessage(pResponse);
+        return;
     }
-    else
+
+    auto targetLocation = m_targetLocations[mission->getVehicleID()];
+    auto state = m_entityStates[mission->getVehicleID()];
+
+    auto actionCommand = CalculateGimbalActions(state, targetLocation->getLatitude(), targetLocation->getLongitude());
+    auto firstWaypoint = mission->getWaypointList().front();
+
+    for (auto action : actionCommand->getVehicleActionList())
     {
-        CERR_FILE_LINE_MSG("ERROR::Task_CommRelayTask:: no watchedEntityState found for Entity[" << m_CommRelayTask->getSupportedEntityID() << "]")
+        firstWaypoint->getVehicleActionList().push_back(action->clone());
     }
 }
 
 std::shared_ptr<afrl::cmasi::VehicleActionCommand> CommRelayTaskService::CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon)
 {
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> caction(new afrl::cmasi::VehicleActionCommand);
-	caction->setVehicleID(entityState->getID());
+    caction->setVehicleID(entityState->getID());
 
     double surveyRadius = m_loiterRadius_m;
     double surveySpeed = entityState->getGroundspeed();

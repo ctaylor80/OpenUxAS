@@ -24,23 +24,11 @@
 #include "afrl/cmasi/VehicleActionCommand.h"
 #include "afrl/cmasi/GimbalStareAction.h"
 #include "afrl/cmasi/LoiterAction.h"
-#include "uxas/messages/task/TaskImplementationResponse.h"
 #include "uxas/messages/task/TaskOption.h"
-#include "uxas/messages/route/RouteRequest.h"
-#include "uxas/messages/route/RouteResponse.h"
-#include "uxas/messages/route/RouteConstraints.h"
 
-#include "pugixml.hpp"
-#include "Constants/Convert.h"
 
 #include <sstream>      //std::stringstream
-#include <iostream>     // std::cout, cerr, etc
-#include <afrl/cmasi/GimbalConfiguration.h>
-
-#define STRING_XML_ENTITY_STATES "EntityStates" //TODO:: define this in some global place
-
-#define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "CMPS-CMPS-CMPS-CMPS:: WatchTask:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
-#define CERR_FILE_LINE_MSG(MESSAGE) std::cerr << "CMPS-CMPS-CMPS-CMPS:: WatchTask:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cerr.flush();
+#include "afrl/cmasi/GimbalConfiguration.h"
 
 
 namespace uxas
@@ -53,9 +41,8 @@ OverwatchTaskService::ServiceBase::CreationRegistrar<OverwatchTaskService>
 OverwatchTaskService::s_registrar(OverwatchTaskService::s_registryServiceTypeNames());
 
 OverwatchTaskService::OverwatchTaskService()
-: TaskServiceBase(OverwatchTaskService::s_typeName(), OverwatchTaskService::s_directoryName())
+: DynamicTaskServiceBase(OverwatchTaskService::s_typeName(), OverwatchTaskService::s_directoryName())
 {
-	m_isMakeTransitionWaypointsActive = true;
 };
 
 OverwatchTaskService::~OverwatchTaskService()
@@ -63,7 +50,7 @@ OverwatchTaskService::~OverwatchTaskService()
 };
 
 bool
-OverwatchTaskService::configureTask(const pugi::xml_node& ndComponent)
+OverwatchTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
 
 {
     std::string strBasePath = m_workDirectoryPath;
@@ -78,30 +65,30 @@ OverwatchTaskService::configureTask(const pugi::xml_node& ndComponent)
             m_watchTask = std::static_pointer_cast<afrl::impact::WatchTask>(m_task);
             if (!m_watchTask)
             {
-                sstrErrors << "ERROR:: **OverwatchTaskService::bConfigure failed to cast a WatchTask from the task pointer." << std::endl;
-                CERR_FILE_LINE_MSG(sstrErrors.str())
+				UXAS_LOG_ERROR("**OverwatchTaskService::bConfigure failed to cast a WatchTask from the task pointer.");
                 isSuccessful = false;
             }
         }
         else
         {
             sstrErrors << "ERROR:: **OverwatchTaskService::bConfigure failed: taskObject[" << m_task->getFullLmcpTypeName() << "] is not a WatchTask." << std::endl;
-            CERR_FILE_LINE_MSG(sstrErrors.str())
+			UXAS_LOG_ERROR("**OverwatchTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a WatchTask.");
             isSuccessful = false;
         }
     } //isSuccessful
-    if (isSuccessful)
-    {
-		if (m_entityStates.find(m_watchTask->getWatchedEntityID()) != m_entityStates.end())
-		{
-			m_watchedEntityStateLast = m_entityStates[m_watchTask->getWatchedEntityID()];
-		}
-    } //if(isSuccessful)
+
+	if (m_entityStates.find(m_watchTask->getWatchedEntityID()) != m_entityStates.end())
+	{
+		m_watchedEntityStateLast = m_entityStates[m_watchTask->getWatchedEntityID()];
+	}
+
+    m_straightLineThreshold_m = m_loiterRadius_m * 1.5;
+
     return (isSuccessful);
 }
 
 bool
-OverwatchTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
+OverwatchTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
 //example: if (afrl::cmasi::isServiceStatus(receivedLmcpObject))
 {
     auto entityState = std::dynamic_pointer_cast<afrl::cmasi::EntityState>(receivedLmcpObject);
@@ -112,8 +99,60 @@ OverwatchTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp
             m_watchedEntityStateLast = entityState;
         }
     }
+
     return (false); // always false implies never terminating service from here
 };
+
+void OverwatchTprocessMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>);
+
+void OverwatchTaskService::processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand> mish)
+{
+
+    auto lastWaypoint = mish->getWaypointList().back();
+    // point the camera at the search point
+    //vehicleActionCommand->setCommandID();
+    //vehicleActionCommand->setStatus();
+    auto gimbalStareAction = new afrl::cmasi::GimbalStareAction;
+    gimbalStareAction->setStarepoint(m_watchedEntityStateLast->getLocation()->clone());
+    if (m_entityConfigurations.find(mish->getVehicleID()) != m_entityConfigurations.end())
+    {
+        auto config = m_entityConfigurations[mish->getVehicleID()];
+        for (auto payload : config->getPayloadConfigurationList())
+        {
+            if (afrl::cmasi::isGimbalConfiguration(payload))
+            {
+                gimbalStareAction->setPayloadID(payload->getPayloadID());
+            }
+        }
+    }
+    lastWaypoint->getVehicleActionList().push_back(gimbalStareAction);
+    gimbalStareAction = nullptr; //gave up ownership
+                                 // add the loiter
+    auto loiterAction = new afrl::cmasi::LoiterAction;
+    loiterAction->setLocation(m_watchedEntityStateLast->getLocation()->clone());
+    if (loiterAction->getLocation()->getAltitude() < 5) //too close to ground
+    {
+        //TODO: use current entityStates altitude
+    }
+    if (m_entityConfigurations.find(mish->getVehicleID()) != m_entityConfigurations.end())
+    {
+        auto config = m_entityConfigurations[mish->getVehicleID()];
+        loiterAction->setAirspeed(config->getNominalSpeed());
+        loiterAction->getLocation()->setAltitude(config->getNominalAltitude());
+    }
+    else
+    {
+        UXAS_LOG_ERROR("ERROR::Task_WatchTask:: no EntityConfiguration found for Entity[" + std::to_string(mish->getVehicleID()) + "]");
+    }
+    loiterAction->setRadius(m_loiterRadius_m);
+    loiterAction->setAxis(0.0);
+    loiterAction->setDirection(afrl::cmasi::LoiterDirection::Clockwise);
+    loiterAction->setDuration(-1.0);
+    loiterAction->setLength(0.0);
+    loiterAction->setLoiterType(afrl::cmasi::LoiterType::Circular);
+    lastWaypoint->getVehicleActionList().push_back(loiterAction);
+    loiterAction = nullptr; //gave up ownership
+}
 
 void OverwatchTaskService::buildTaskPlanOptions()
 {
@@ -167,71 +206,21 @@ bool OverwatchTaskService::isCalculateOption(const int64_t& taskId, int64_t& opt
     }
     else
     {
-        CERR_FILE_LINE_MSG("ERROR::Task_WatchTask:: no watchedEntityState found for Entity[" << m_watchTask->getWatchedEntityID() << "]")
+		UXAS_LOG_ERROR("ERROR::Task_WatchTask:: no watchedEntityState found for Entity[" + std::to_string(m_watchTask->getWatchedEntityID()) + "]");
         isSuccessful = false;
     }
 
     return (isSuccessful);
 }
 
-void OverwatchTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState) {
+std::shared_ptr<afrl::cmasi::Location3D> OverwatchTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
+{
     if (m_watchedEntityStateLast)
     {
-        // point the camera at the search point
-        auto vehicleActionCommand = std::make_shared<afrl::cmasi::VehicleActionCommand>();
-        //vehicleActionCommand->setCommandID();
-        vehicleActionCommand->setVehicleID(entityState->getID());
-        //vehicleActionCommand->setStatus();
-		auto gimbalStareAction = std::make_shared<afrl::cmasi::GimbalStareAction>();
-        gimbalStareAction->setStarepoint(m_watchedEntityStateLast->getLocation()->clone());
-		if (m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
-		{
-			auto config = m_entityConfigurations[entityState->getID()];
-			for (auto payload : config->getPayloadConfigurationList())
-			{
-				if (afrl::cmasi::isGimbalConfiguration(payload))
-				{
-					gimbalStareAction->setPayloadID(payload->getPayloadID());
-				}
-			}
-		}
-		vehicleActionCommand->getVehicleActionList().push_back(gimbalStareAction->clone());
-
-        // add the loiter
-        auto loiterAction = new afrl::cmasi::LoiterAction();
-        loiterAction->setLocation(m_watchedEntityStateLast->getLocation()->clone());
-		if (loiterAction->getLocation()->getAltitude() < 5) //too close to ground
-		{
-			//use current entityStates altitude
-			loiterAction->getLocation()->setAltitude(entityState->getLocation()->getAltitude());
-		}
-        if (m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
-        {
-            loiterAction->setAirspeed(m_entityConfigurations[entityState->getID()]->getNominalSpeed());
-        }
-        else
-        {
-            CERR_FILE_LINE_MSG("ERROR::Task_WatchTask:: no EntityConfiguration found for Entity[" << entityState->getID() << "]")
-        }
-        loiterAction->setRadius(m_loiterRadius_m);
-        loiterAction->setAxis(0.0);
-        loiterAction->setDirection(afrl::cmasi::LoiterDirection::Clockwise);
-        loiterAction->setDuration(-1.0);
-        loiterAction->setLength(0.0);
-        loiterAction->setLoiterType(afrl::cmasi::LoiterType::Circular);
-        vehicleActionCommand->getVehicleActionList().push_back(loiterAction);
-        loiterAction = nullptr; //gave up ownership
-
-        // send out the response
-        auto newMessage = std::static_pointer_cast<avtas::lmcp::Object>(vehicleActionCommand);
-        sendSharedLmcpObjectBroadcastMessage(newMessage);
+        return std::make_shared<afrl::cmasi::Location3D>(*m_watchedEntityStateLast->getLocation()->clone());
     }
-    else
-    {
-        CERR_FILE_LINE_MSG("ERROR::Task_WatchTask:: no watchedEntityState found for Entity[" << m_watchTask->getWatchedEntityID() << "]")
-    }
+    return nullptr;
 }
-
 
 }; //namespace task
 }; //namespace service
