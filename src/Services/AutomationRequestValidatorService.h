@@ -36,112 +36,155 @@
 
 namespace uxas
 {
-    namespace service
+namespace service
+{
+
+/*! \class AutomationRequestValidatorService
+ *\brief Checks all elements of automation requests to make sure they are present 
+ * before sending out a UniqueAutomationRequest. 
+ * 
+ * Configuration String: 
+ *  <Service Type="AutomationRequestValidatorService" MaxResponseTime_ms="5000"/>
+ * 
+ * Options:
+ *  - MaxResponseTime_ms
+ * 
+ * Subscribed Messages:
+ *  - afrl::cmasi::AutomationRequest
+ *  - afrl::impact::ImpactAutomationRequest
+ *  - uxas::messages::task::UniqueAutomationResponse
+ *  - uxas::messages::task::TaskAutomationRequest
+ *  - afrl::cmasi::AirVehicleConfiguration
+ *  - afrl::vehicles::GroundVehicleConfiguration
+ *  - afrl::vehicles::SurfaceVehicleConfiguration
+ *  - afrl::cmasi::AirVehicleState
+ *  - afrl::vehicles::GroundVehicleState
+ *  - afrl::vehicles::SurfaceVehicleState
+ *  - afrl::cmasi::RemoveTasks
+ *  - uxas::messages::task::TaskInitialized
+ *  - afrl::cmasi::OperatingRegion
+ *  - afrl::cmasi::KeepInZone
+ *  - afrl::cmasi::KeepOutZone
+ * 
+ * Sent Messages:
+ *  - uxas::messages::task::TaskAutomationResponse
+ *  - afrl::cmasi::AutomationResponse
+ *  - afrl::impact::ImpactAutomationResponse
+ *  - uxas::messages::task::UniqueAutomationRequest
+ *  - afrl::cmasi::ServiceStatus
+ * 
+ */
+
+
+class AutomationRequestValidatorService : public ServiceBase
+{
+public:
+
+    static const std::string&
+    s_typeName()
     {
+        static std::string s_string("AutomationRequestValidatorService");
+        return (s_string);
+    };
 
-        class AutomationRequestValidatorService : public ServiceBase
-        {
-        public:
+    static const std::vector<std::string>
+    s_registryServiceTypeNames()
+    {
+        std::vector<std::string> registryServiceTypeNames = {s_typeName()};
+        return (registryServiceTypeNames);
+    };
+    
+    static const std::string&
+    s_directoryName()
+    {
+        static std::string s_string("");
+        return (s_string);
+    };
 
-            static const std::string&
-                s_typeName()
-            {
-                static std::string s_string("AutomationRequestValidatorService");
-                return (s_string);
-            };
+    static ServiceBase*
+    create()
+    {
+        return new AutomationRequestValidatorService;
+    };
 
-            static const std::vector<std::string>
-                s_registryServiceTypeNames()
-            {
-                std::vector<std::string> registryServiceTypeNames = { s_typeName() };
-                return (registryServiceTypeNames);
-            };
+    AutomationRequestValidatorService();
 
-            static const std::string&
-                s_directoryName()
-            {
-                static std::string s_string("");
-                return (s_string);
-            };
+    virtual
+    ~AutomationRequestValidatorService();
 
-            static ServiceBase*
-                create()
-            {
-                return new AutomationRequestValidatorService;
-            };
+private:
 
-            AutomationRequestValidatorService();
+    static
+    ServiceBase::CreationRegistrar<AutomationRequestValidatorService> s_registrar;
 
-            virtual
-                ~AutomationRequestValidatorService();
+    /** brief Copy construction not permitted */
+    AutomationRequestValidatorService(AutomationRequestValidatorService const&) = delete;
 
-        private:
+    /** brief Copy assignment operation not permitted */
+    void operator=(AutomationRequestValidatorService const&) = delete;
 
-            static
-                ServiceBase::CreationRegistrar<AutomationRequestValidatorService> s_registrar;
+    bool
+    configure(const pugi::xml_node& serviceXmlNode) override;
 
-            /** brief Copy construction not permitted */
-            AutomationRequestValidatorService(AutomationRequestValidatorService const&) = delete;
+    bool
+    initialize() override;
 
-            /** brief Copy assignment operation not permitted */
-            void operator=(AutomationRequestValidatorService const&) = delete;
+    //bool
+    //start() override;
 
-            bool
-                configure(const pugi::xml_node& serviceXmlNode) override;
+    //bool
+    //terminate() override;
 
-            bool
-                initialize() override;
+    bool
+    processReceivedLmcpMessage(std::unique_ptr<uxas::communications::data::LmcpMessage> receivedLmcpMessage) override;
 
-            bool
-                processReceivedLmcpMessage(std::unique_ptr<uxas::communications::data::LmcpMessage> receivedLmcpMessage) override;
+    ////////////////////////
+    // TIMER CALLBACKS
+    /*! \brief this function gets called when the response timer expires */
+    void OnResponseTimeout();
 
-            ////////////////////////
-            // TIMER CALLBACKS
-            /*! \brief this function gets called when the response timer expires */
-            void OnResponseTimeout();
+    bool isCheckAutomationRequestRequirements(const std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>& uniqueAutomationRequest);
+    void checkToSendNextRequest();
+    void sendResponseError(int64_t reqID, std::string errStr);
+    std::string generateDescription(std::vector<int64_t> vehicles, std::vector<int64_t> tasks);
 
-            bool isCheckAutomationRequestRequirements(const std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>& uniqueAutomationRequest);
-            void checkToSendNextRequest();
-            void sendResponseError(int64_t reqID, std::string errStr);
-            std::string generateDescription(std::vector<int64_t> vehicles, std::vector<int64_t> tasks);
+    /*! \brief  this timer is used to track time for the system to respond
+     * to automation requests*/
+    uint64_t m_responseTimerId{0};
+    /*! \brief  parameter indicating the maximum time to wait for a response (in ms)*/
+    uint32_t m_maxResponseTime_ms = {5000}; // default: 5000 ms
 
-            /*! \brief  this timer is used to track time for the system to respond
-            * to automation requests*/
-            uint64_t m_responseTimerId{ 0 };
-            /*! \brief  parameter indicating the maximum time to wait for a response (in ms)*/
-            uint32_t m_maxResponseTime_ms = { 5000 }; // default: 5000 ms
-
-            enum AutomationRequestType
-            {
-                AUTOMATION_REQUEST,
-                SANDBOX_AUTOMATION_REQUEST,
-                TASK_AUTOMATION_REQUEST
-            };
+    enum AutomationRequestType
+    {
+        AUTOMATION_REQUEST,
+        SANDBOX_AUTOMATION_REQUEST,
+        TASK_AUTOMATION_REQUEST
+    };
 
 
-            // storage
-            std::deque< std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> > m_waitingRequests;
-            std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> m_waitingForResponse;
-            bool m_isAllClear{ true };
-            std::unordered_map<int64_t, AutomationRequestType> m_sandboxMap;
-            std::unordered_map<int64_t, std::shared_ptr<afrl::impact::ImpactAutomationRequest>> m_UniqueAutomationRequestIDVsImpactAutomationRequest;
+    // storage
+    std::deque< std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> > m_waitingRequests;
+    std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> m_waitingForResponse;
+    bool m_isAllClear{true};
+    std::unordered_map<int64_t, AutomationRequestType> m_sandboxMap;
+    std::unordered_map<int64_t, std::shared_ptr<afrl::impact::ImpactAutomationRequest>> m_UniqueAutomationRequestIDVsImpactAutomationRequest;
 
-            std::unordered_set<int64_t> m_availableConfigurationEntityIds;
-            std::unordered_set<int64_t> m_availableStateEntityIds;
-            std::unordered_set<int64_t> m_availableKeepInZoneIds;
-            std::unordered_set<int64_t> m_availableKeepOutZoneIds;
-            std::unordered_set<int64_t> m_availableAreaOfInterestIds;
-            std::unordered_set<int64_t> m_availableLineOfInterestIds;
-            std::unordered_set<int64_t> m_availablePointOfInterestIds;
-            std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::OperatingRegion> > m_availableOperatingRegions;
-            std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Task> > m_availableTasks;
-            std::unordered_set<int64_t> m_availableStartedTaskIds;
-            std::list<std::shared_ptr<messages::task::TaskImplementationResponse>> m_availableTaskResponses;
+    std::unordered_set<int64_t> m_availableConfigurationEntityIds;
+    std::unordered_set<int64_t> m_availableStateEntityIds;
+    std::unordered_set<int64_t> m_availableKeepInZoneIds;
+    std::unordered_set<int64_t> m_availableKeepOutZoneIds;
+    std::unordered_set<int64_t> m_availableAreaOfInterestIds;
+    std::unordered_set<int64_t> m_availableLineOfInterestIds;
+    std::unordered_set<int64_t> m_availablePointOfInterestIds;
+    std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::OperatingRegion> > m_availableOperatingRegions;
+    std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Task> > m_availableTasks;
+    std::unordered_set<int64_t> m_availableStartedTaskIds;
+    std::list<std::shared_ptr<messages::task::TaskImplementationResponse>> m_availableTaskResponses;
 
-            std::unordered_set<int64_t> m_timedOutRequests;
-        };
+    std::unordered_set<int64_t> m_timedOutRequests;
+};
 
-    }; //namespace service
+}; //namespace service
 }; //namespace uxas
 
 #endif /* UXAS_SERVICE_AUTOMATION_REQUEST_VALIDATOR_SERVICE_H */

@@ -283,20 +283,20 @@ namespace uxas
 
           //don't care about key. Construct header from valid LMCP.
 
-		  avtas::lmcp::ByteBuffer byteBuffer;
-		  byteBuffer.allocate(message.size());
-		  byteBuffer.put(reinterpret_cast<const uint8_t*>(message.c_str()), message.size());
-		  byteBuffer.rewind();
+          avtas::lmcp::ByteBuffer byteBuffer;
+          byteBuffer.allocate(message.size());
+          byteBuffer.put(reinterpret_cast<const uint8_t*>(message.c_str()), message.size());
+          byteBuffer.rewind();
 
-		  std::shared_ptr<avtas::lmcp::Object> ptr_Object;
-		  ptr_Object.reset(avtas::lmcp::Factory::getObject(byteBuffer));
+          std::shared_ptr<avtas::lmcp::Object> ptr_Object;
+          ptr_Object.reset(avtas::lmcp::Factory::getObject(byteBuffer));
           if (ptr_Object == nullptr)
           {
               IMPACT_INFORM("Failed to Deserialize ", key, " Make sure the right MDMs are being used.");
               continue;
           }
           auto header = ptr_Object->getFullLmcpTypeName();
-		  std::unique_ptr<uxas::communications::data::AddressedAttributedMessage> recvdAddAttMsg = uxas::stduxas::make_unique<uxas::communications::data::AddressedAttributedMessage>();
+          std::unique_ptr<uxas::communications::data::AddressedAttributedMessage> recvdAddAttMsg = uxas::stduxas::make_unique<uxas::communications::data::AddressedAttributedMessage>();
 
           recvdAddAttMsg->setAddressAttributesAndPayload(header, "lmcp", header, "fusion", externalID, "1", message);
 
