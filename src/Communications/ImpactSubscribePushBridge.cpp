@@ -152,14 +152,14 @@ namespace uxas
 
       //push socket
       auto pushConfig = transport::ZeroMqSocketConfiguration(uxas::communications::transport::NETWORK_NAME::zmqLmcpNetwork(),
-        m_externalPushSocketAddress, ZMQ_PUSH, false, false, zmqhighWaterMark, zmqhighWaterMark);
+        m_externalPushSocketAddress, ZMQ_PUSH, m_isServer, false, zmqhighWaterMark, zmqhighWaterMark);
 
       sender = transport::ZeroMqFabric::getInstance().createSocket(pushConfig);
 
 
       //sub socket
       auto subConfig = transport::ZeroMqSocketConfiguration(uxas::communications::transport::NETWORK_NAME::zmqLmcpNetwork(),
-        m_externalSubscribeSocketAddress, ZMQ_SUB, false, true, zmqhighWaterMark, zmqhighWaterMark);
+        m_externalSubscribeSocketAddress, ZMQ_SUB, m_isServer, true, zmqhighWaterMark, zmqhighWaterMark);
       subscriber = transport::ZeroMqFabric::getInstance().createSocket(subConfig);
       //subscriber->setsockopt(ZMQ_SUBSCRIBE, "lmcp:", 4);
 
