@@ -68,11 +68,11 @@ AutomationRequestValidatorService::AutomationRequestValidatorService()
 
 AutomationRequestValidatorService::~AutomationRequestValidatorService()
 {
-    uint64_t delayTime_ms{ 1000 };
+    uint64_t delayTime_ms{1000};
     if (m_responseTimerId && !uxas::common::TimerManager::getInstance().destroyTimer(m_responseTimerId, delayTime_ms))
     {
         UXAS_LOG_WARN("AutomationRequestValidatorService::~AutomationRequestValidatorService failed to destroy response timer "
-            "(m_responseTimerId) with timer ID ", m_responseTimerId, " within ", delayTime_ms, " millisecond timeout");
+                "(m_responseTimerId) with timer ID ", m_responseTimerId, " within ", delayTime_ms, " millisecond timeout");
     }
 };
 
@@ -82,7 +82,7 @@ AutomationRequestValidatorService::initialize()
 
     // create timer
     m_responseTimerId = uxas::common::TimerManager::getInstance().createTimer(
-        std::bind(&AutomationRequestValidatorService::OnResponseTimeout, this), "AutomationRequestValidatorService::OnResponseTimeout()");
+            std::bind(&AutomationRequestValidatorService::OnResponseTimeout, this), "AutomationRequestValidatorService::OnResponseTimeout()");
 
 
     return true;
@@ -114,50 +114,33 @@ AutomationRequestValidatorService::configure(const pugi::xml_node & ndComponent)
     for(auto child : childstates)
         addSubscriptionAddress(child);
     
-
     // TASKS
-	addSubscriptionAddress(afrl::cmasi::RemoveTasks::Subscription);
-	// Subscribe to Task and all derivatives of Task
-	addSubscriptionAddress(afrl::cmasi::Task::Subscription);
-	std::vector< std::string > childtasks = afrl::cmasi::TaskDescendants();
-	for (auto child : childtasks)
-		addSubscriptionAddress(child);
-
-	//IMPACT TASKS
-	addSubscriptionAddress(afrl::impact::AreaOfInterest::Subscription);
-	addSubscriptionAddress(afrl::impact::LineOfInterest::Subscription);
-	addSubscriptionAddress(afrl::impact::PointOfInterest::Subscription);
-
-
+    addSubscriptionAddress(afrl::cmasi::RemoveTasks::Subscription);
+    addSubscriptionAddress(uxas::messages::task::TaskInitialized::Subscription);
     // KEEP-IN/OUT/OPERATING
     addSubscriptionAddress(afrl::cmasi::OperatingRegion::Subscription);
     addSubscriptionAddress(afrl::cmasi::KeepInZone::Subscription);
     addSubscriptionAddress(afrl::cmasi::KeepOutZone::Subscription);
-    //ISOLATE TASKS
-    //addSubscriptionAddress(uxas::project::isolate::PatrolTask::PATROLTASK_FULL_LMCP_TYPE_NAME);
-    //PATROL TASKS
-    //addSubscriptionAddress(uxas::project::patrol::PatrolTask::PATROLTASK_FULL_LMCP_TYPE_NAME);
-    //UXCOMM TASKS
-    //addSubscriptionAddress(uxas::messages::uxcomm::MeetMeTask::MEETMETASK_FULL_LMCP_TYPE_NAME);
-    //UXNATIVE TASKS
-    //addSubscriptionAddress(uxas::messages::uxnative::ImageAreaSearchTask::IMAGEAREASEARCHTASK_FULL_LMCP_TYPE_NAME);
-    //addSubscriptionAddress(uxas::messages::uxnative::ImageLineSearchTask::IMAGELINESEARCHTASK_FULL_LMCP_TYPE_NAME);
-    //addSubscriptionAddress(uxas::messages::uxnative::ImagePointSearchTask::IMAGEPOINTSEARCHTASK_FULL_LMCP_TYPE_NAME);
-    //PISR TASKS
-    addSubscriptionAddress(uxas::messages::task::TaskInitialized::Subscription);
+
+    //IMPACT TASKS
+    addSubscriptionAddress(afrl::impact::AreaOfInterest::Subscription);
+    addSubscriptionAddress(afrl::impact::LineOfInterest::Subscription);
+    addSubscriptionAddress(afrl::impact::PointOfInterest::Subscription);
+    
+    // Subscribe to Task and all derivatives of Task
+    addSubscriptionAddress(afrl::cmasi::Task::Subscription);
+    std::vector< std::string > childtasks = afrl::cmasi::TaskDescendants();
+    for(auto child : childtasks)
+        addSubscriptionAddress(child);
 
     addSubscriptionAddress(messages::task::TaskImplementationResponse::Subscription);
-
-
-
     return true;
 }
 
 bool
 AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<uxas::communications::data::LmcpMessage> receivedLmcpMessage)
 {
-
-    bool isMessageHandled{ false };
+    bool isMessageHandled{false};
     auto entityConfig = std::dynamic_pointer_cast<afrl::cmasi::EntityConfiguration>(receivedLmcpMessage->m_object);
     auto entityState = std::dynamic_pointer_cast<afrl::cmasi::EntityState>(receivedLmcpMessage->m_object);
     if ( entityConfig )
@@ -224,10 +207,10 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
         isMessageHandled = true;
     }
     else if (afrl::cmasi::isAutomationRequest(receivedLmcpMessage->m_object) ||
-        afrl::impact::isImpactAutomationRequest(receivedLmcpMessage->m_object) ||
-        uxas::messages::task::isTaskAutomationRequest(receivedLmcpMessage->m_object))
+            afrl::impact::isImpactAutomationRequest(receivedLmcpMessage->m_object) ||
+            uxas::messages::task::isTaskAutomationRequest(receivedLmcpMessage->m_object))
     {
-        auto uniqueAutomationRequest = std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>(new uxas::messages::task::UniqueAutomationRequest);
+        auto uniqueAutomationRequest = std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> (new uxas::messages::task::UniqueAutomationRequest);
         uniqueAutomationRequest->setRequestID(getUniqueEntitySendMessageId());
 
         if (afrl::impact::isImpactAutomationRequest(receivedLmcpMessage->m_object))
@@ -249,7 +232,7 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
 
             uniqueAutomationRequest->setOriginalRequest((afrl::cmasi::AutomationRequest*) taskAutomationRequest->getOriginalRequest()->clone());
             uniqueAutomationRequest->setSandBoxRequest(taskAutomationRequest->getSandBoxRequest());
-            for (auto& planningState : taskAutomationRequest->getPlanningStates())
+            for(auto& planningState : taskAutomationRequest->getPlanningStates())
             {
                 uniqueAutomationRequest->getPlanningStates().push_back(planningState->clone());
             }
@@ -278,8 +261,12 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
             if (m_sandboxMap[resp->getResponseID()] == TASK_AUTOMATION_REQUEST)
             {
                 auto taskResponse = std::make_shared<uxas::messages::task::TaskAutomationResponse>();
-                taskResponse->setResponseID(resp->getResponseID());
                 taskResponse->setOriginalResponse(resp->getOriginalResponse()->clone());
+                taskResponse->setResponseID(resp->getResponseID());
+
+                // add FinalStates to task responses
+                for(auto st : resp->getFinalStates())
+                    taskResponse->getFinalStates().push_back(st->clone());
                 sendSharedLmcpObjectBroadcastMessage(taskResponse);
             }
             else if (m_sandboxMap[resp->getResponseID()] == AUTOMATION_REQUEST)
@@ -291,7 +278,7 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
             else
             {
                 // look up play and solution IDs
-                auto sandResponse = std::shared_ptr<afrl::impact::ImpactAutomationResponse>(new afrl::impact::ImpactAutomationResponse);
+                auto sandResponse = std::shared_ptr<afrl::impact::ImpactAutomationResponse> (new afrl::impact::ImpactAutomationResponse);
 
                 sandResponse->setTrialResponse(resp->getOriginalResponse()->clone());
 
@@ -403,7 +390,7 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
 
 void AutomationRequestValidatorService::OnResponseTimeout()
 {
-    if (!m_waitingForResponse)
+    if(!m_waitingForResponse)
     {
         m_isAllClear = true;
     }
@@ -467,7 +454,7 @@ void AutomationRequestValidatorService::sendResponseError(int64_t reqID, std::st
 
 void AutomationRequestValidatorService::checkToSendNextRequest()
 {
-    if (!m_waitingForResponse && !m_waitingRequests.empty())
+    if(!m_waitingForResponse && !m_waitingRequests.empty())
     {
         auto uniqueAutomationRequest = m_waitingRequests.front();
         m_waitingRequests.pop_front();
@@ -475,9 +462,8 @@ void AutomationRequestValidatorService::checkToSendNextRequest()
         {
             m_isAllClear = false;
             m_waitingForResponse = uniqueAutomationRequest;
-
             sendSharedLmcpObjectBroadcastMessage(uniqueAutomationRequest);
-
+            
             auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
             serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Information);
             auto keyValuePair = new afrl::cmasi::KeyValuePair;
@@ -510,7 +496,7 @@ void AutomationRequestValidatorService::checkToSendNextRequest()
 
 bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(const std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>& uniqueAutomationRequest)
 {
-    bool isReady{ true };
+    bool isReady{true};
     std::stringstream reasonForFailure;
     reasonForFailure << "Automation Request ID[" << uniqueAutomationRequest->getRequestID() << "] Not Ready ::" << std::endl;
 
@@ -534,7 +520,7 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
         }
         else
         {
-            reasonForFailure << "- No EntityConfiguration's available." << std::endl;
+            reasonForFailure << "- No EntityConfigurations available." << std::endl;
             isReady = false;
         }
 
@@ -543,16 +529,32 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
         {
             for (auto& id : uniqueAutomationRequest->getOriginalRequest()->getEntityList())
             {
-                if (m_availableStateEntityIds.find(id) == m_availableStateEntityIds.end())
+                bool isReadyLocal{false};
+                if (m_availableStateEntityIds.find(id) != m_availableStateEntityIds.end())
                 {
-                    reasonForFailure << "- EntityState for Entity Id[" << id << "] not available." << std::endl;
+                    isReadyLocal = true;
+                }
+                if(!isReadyLocal)
+                {
+                    for(auto& planningState: uniqueAutomationRequest->getPlanningStates())
+                    {
+                        if(planningState->getEntityID() == id)
+                        {
+                            isReadyLocal = true;
+                            break;
+                        }
+                    }
+                }
+                if(!isReadyLocal)
+                {
                     isReady = false;
+                    reasonForFailure << "- EntityState for Entity Id[" << id << "] not available." << std::endl;
                 }
             }
         }
         else
         {
-            reasonForFailure << "- No EntityStates's available." << std::endl;
+            reasonForFailure << "- No EntityStates available." << std::endl;
             isReady = false;
         }
     }
@@ -560,7 +562,7 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
     {
         if (!m_availableConfigurationEntityIds.empty() && !m_availableStateEntityIds.empty())
         {
-            bool isFoundAMatch{ false };
+            bool isFoundAMatch{false};
             for (auto& id1 : m_availableConfigurationEntityIds)
             {
                 for (auto& id2 : m_availableConfigurationEntityIds)
@@ -578,7 +580,7 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
             }
             if (!isFoundAMatch)
             {
-                reasonForFailure << "- No EntityStates's that match EntityConfiguration's are available." << std::endl;
+                reasonForFailure << "- No EntityStates that match EntityConfigurations are available." << std::endl;
                 isReady = false;
             }
         }
@@ -586,18 +588,18 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
         {
             if (m_availableConfigurationEntityIds.empty())
             {
-                reasonForFailure << "- No EntityConfiguration's available." << std::endl;
+                reasonForFailure << "- No EntityConfigurations available." << std::endl;
             }
             else
             {
-                reasonForFailure << "- No EntityStates's available." << std::endl;
+                reasonForFailure << "- No EntityStates available." << std::endl;
             }
             isReady = false;
         }
 
     } //if(!uniqueAutomationRequest->getOriginalRequest()->getEntityList().empty())
 
-      // check for required operating region and keepin/keepout zones
+    // check for required operating region and keepin/keepout zones
     if (uniqueAutomationRequest->getOriginalRequest()->getOperatingRegion() != 0)
     {
         auto itOperatingRegion = m_availableOperatingRegions.find(uniqueAutomationRequest->getOriginalRequest()->getOperatingRegion());
@@ -713,7 +715,7 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
         //IMPACT_INFORM(reasonForFailure.str()); TODO: output reason for failure after a timeout so it is not blasted
         //COUT_INFO_MSG(reasonForFailure.str());
         auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
-        serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Error);
+        serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Information);
         auto keyValuePair = new afrl::cmasi::KeyValuePair;
         keyValuePair->setKey(std::string("RequestValidator"));
         keyValuePair->setValue(reasonForFailure.str());
