@@ -60,7 +60,7 @@ namespace task
         virtual bool configureDynamicTask(const pugi::xml_node& serviceXmlNode) { return true; };
 
         std::unordered_map<int64_t, int64_t> m_throttle;
-        
+        std::unordered_map<int64_t, int64_t> m_entityIdVsLastWaypoint;
     };
 }
 }

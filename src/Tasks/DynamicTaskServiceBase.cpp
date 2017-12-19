@@ -53,6 +53,10 @@ namespace task
                     wp->getAssociatedTasks().push_back(m_task->getTaskID());
                     mish->getWaypointList().push_back(wp->clone());
                 }
+                auto back = mish->getWaypointList().back();
+                back->setNextWaypoint(back->getNumber());
+
+                m_entityIdVsLastWaypoint[response->getVehicleID()] = back->getNumber();
 
                 mish->setVehicleID(response->getVehicleID());
                 mish->setFirstWaypoint(mish->getWaypointList().front()->getNumber());
@@ -89,11 +93,19 @@ namespace task
             return;
         }
 
-        //don't use ground vehicles dynamically. They are problematic
+        //ground vehicles are problematic. Wait until they finish a leg and then recalculate
         auto cast = static_cast<std::shared_ptr<avtas::lmcp::Object>>(entityState);
         if (afrl::vehicles::isGroundVehicleState(cast))
         {
-            return;
+            if (m_entityIdVsLastWaypoint.find(entityState->getID()) != m_entityIdVsLastWaypoint.end())
+            {
+                auto lastWaypoint = m_entityIdVsLastWaypoint[entityState->getID()];
+                if (entityState->getCurrentWaypoint() != lastWaypoint)
+                {
+                    return;
+                }
+            }
+            //recalculate
         }
 
         auto loc = calculateTargetLocation(entityState);
