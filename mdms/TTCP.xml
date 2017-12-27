@@ -16,7 +16,7 @@
 <MDM>
     <SeriesName>TTCP</SeriesName>
     <Namespace>afrl/ttcp</Namespace>
-    <Version>1</Version>
+    <Version>2</Version>
     <EnumList>
         <!-- Affiliation classification of track. -->
         <Enum Name="Affiliation">
@@ -97,6 +97,10 @@
 			<Field Name="TrackId" Type="int64" />
 			<!-- track action -->
 			<Field Name="TrackChange" Type="TrackActionOptions" />
+		</Struct>
+		
+		<Struct Name="PayloadDrop" Extends="SearchTask" Series="CMASI">
+		    <Field Name="DropLocation" Type="Location3D" Series="CMASI" Default="null" Optional="false" />
 		</Struct>
 	
         
