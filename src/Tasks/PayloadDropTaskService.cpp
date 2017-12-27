@@ -29,6 +29,8 @@
 #include <afrl/cmasi/AirVehicleConfiguration.h>
 #include <afrl/cmasi/LoiterAction.h>
 #include <UnitConversions.h>
+#include <afrl/cmasi/GimbalStareAction.h>
+#include <afrl/cmasi/GimbalConfiguration.h>
 
 // convenience definitions for the option strings
 #define STRING_XML_OPTION_STRING "OptionString"
@@ -248,17 +250,30 @@ bool PayloadDropTaskService::isProcessTaskImplementationRouteResponse(std::share
 
     //make a loiter action for two rotation. We do this by estimating the time it will take
     auto loiterRadius = turnRadius_m * 2.0; //buffer
+    auto duration = (2 * n_Const::c_Convert::dTwoPi() * loiterRadius) / airVehicleConfig->getNominalSpeed() * 1000;
     auto loiter = new afrl::cmasi::LoiterAction();
     loiter->setLocation(m_payloadDrop->getDropLocation()->clone());
     loiter->setAirspeed(airVehicleConfig->getNominalSpeed());
     loiter->setRadius(loiterRadius);
     loiter->setLoiterType(afrl::cmasi::LoiterType::Circular);
     loiter->getAssociatedTaskList().push_back(m_payloadDrop->getTaskID());
-    loiter->setDuration((2 * n_Const::c_Convert::dTwoPi() * loiterRadius) / airVehicleConfig->getNominalSpeed() * 1000); //two rotations
+    loiter->setDuration(duration); //two rotations
     back->getVehicleActionList().push_back(loiter);
 
-    //TODO: don't forget to send a gimbal stare command
-
+    for (auto payload : config->second->getPayloadConfigurationList())
+    {
+        if (afrl::cmasi::isGimbalConfiguration(payload))
+        {
+            auto stare = new afrl::cmasi::GimbalStareAction();
+            stare->setDuration(duration);
+            auto groundPoint = m_payloadDrop->getDropLocation()->clone();
+            groundPoint->setAltitude(0);
+            stare->setStarepoint(groundPoint);
+            stare->setPayloadID(payload->getPayloadID());
+            stare->getAssociatedTaskList().push_back(m_task->getTaskID());
+            back->getVehicleActionList().push_back(stare);
+        }
+    }
     return false; //base class builds response
 }
 

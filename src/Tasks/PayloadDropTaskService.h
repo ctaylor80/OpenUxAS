@@ -9,9 +9,9 @@
 
 /* 
  * File:   00_PayloadDropTask.h
- * Author: steve
+ * Author: Colin
  *
- * Created on March 22, 2017, 5:55 PM
+ * Created on December 21, 2017
  */
 
 #ifndef UXAS_TASK_PAYLOADDROPTASK_H
