@@ -361,10 +361,7 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
 
             taskImplementationResponse->getTaskWaypoints().push_back(newwp);
 
-			auto lastWaypoint = taskImplementationResponse->getTaskWaypoints().back();
-
 			auto finalWaypoint = taskImplementationResponse->getTaskWaypoints().back();
-			finalWaypoint->getVehicleActionList().push_back(m_pointSearchTask->getDesiredAction()->clone());
 
 			//set up a gimbal stare action
 			auto gimbalStareAction = std::make_shared<afrl::cmasi::GimbalStareAction>();
