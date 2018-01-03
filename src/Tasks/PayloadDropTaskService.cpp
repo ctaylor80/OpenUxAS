@@ -124,7 +124,6 @@ void PayloadDropTaskService::buildTaskPlanOptions()
     //approach from any angle
     double dHeadingCurrent_rad = 0.0;
     double dHeadingTarget_rad = n_Const::c_Convert::dTwoPi() - wedgeDirectionIncrement;
-    double runway_m = 200;
     for (auto itEligibleEntities : m_speedAltitudeVsEligibleEntityIdsRequested)
     {
         for (auto entityId : itEligibleEntities.second)
@@ -144,6 +143,16 @@ void PayloadDropTaskService::buildTaskPlanOptions()
                 double newLat;
                 double newLon;
                 uxas::common::utilities::CUnitConversions unitConversions;
+
+				auto config = m_entityConfigurations.find(entityId)->second;
+				auto cast = static_cast<std::shared_ptr<avtas::lmcp::Object>>(config);
+				if (!afrl::cmasi::isAirVehicleConfiguration(cast))
+				{
+					//inplicitly only allow air vehicles
+					continue;
+				}
+				auto airVehicleConfig = std::dynamic_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(cast);
+				double runway_m = getLevelTurnRadius(airVehicleConfig);
 
                 auto runwayStart = m_payloadDrop->getDropLocation()->clone();
                 unitConversions.ConvertLatLong_degToNorthEast_m(runwayStart->getLatitude(), runwayStart->getLongitude(), north_m, east_m);
@@ -242,14 +251,10 @@ bool PayloadDropTaskService::isProcessTaskImplementationRouteResponse(std::share
     back->getAssociatedTasks().push_back(m_payloadDrop->getTaskID());
     taskImplementationResponse->getTaskWaypoints().push_back(clone);
 
-    // compute turn radius for a "level turn" r = V^2/(g*tan(phi_max))
-    double nominalMaxBankAngle_rad = n_Const::c_Convert::toRadians(airVehicleConfig->getNominalFlightProfile()->getMaxBankAngle());
-    double nominalSpeed_mps = airVehicleConfig->getNominalSpeed();
-    double dTanMaxBankAngle = tan(nominalMaxBankAngle_rad);
-    double turnRadius_m = (dTanMaxBankAngle <= 0.0) ? (0.0) : (pow((nominalSpeed_mps), 2) / (n_Const::c_Convert::dGravity_mps2() * dTanMaxBankAngle));
+
 
     //make a loiter action for two rotation. We do this by estimating the time it will take
-    auto loiterRadius = turnRadius_m * 2.0; //buffer
+    auto loiterRadius = getLevelTurnRadius(airVehicleConfig);
     auto duration = (2 * n_Const::c_Convert::dTwoPi() * loiterRadius) / airVehicleConfig->getNominalSpeed() * 1000;
     auto loiter = new afrl::cmasi::LoiterAction();
     loiter->setLocation(m_payloadDrop->getDropLocation()->clone());
@@ -275,6 +280,16 @@ bool PayloadDropTaskService::isProcessTaskImplementationRouteResponse(std::share
         }
     }
     return false; //base class builds response
+}
+
+double PayloadDropTaskService::getLevelTurnRadius(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> airVehicleConfig)
+{
+	// compute turn radius for a "level turn" r = V^2/(g*tan(phi_max))
+	double nominalMaxBankAngle_rad = n_Const::c_Convert::toRadians(airVehicleConfig->getNominalFlightProfile()->getMaxBankAngle());
+	double nominalSpeed_mps = airVehicleConfig->getNominalSpeed();
+	double dTanMaxBankAngle = tan(nominalMaxBankAngle_rad);
+	double turnRadius_m = (dTanMaxBankAngle <= 0.0) ? (0.0) : (pow((nominalSpeed_mps), 2) / (n_Const::c_Convert::dGravity_mps2() * dTanMaxBankAngle));
+	return turnRadius_m * m_radiusBufferMultiplier;
 }
 
 

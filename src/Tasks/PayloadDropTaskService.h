@@ -19,6 +19,7 @@
 
 #include "TaskServiceBase.h"
 #include "../../UxAS-afrl_internal/src/LMCP/afrl/ttcp/PayloadDrop.h"
+#include "../../UxAS-afrl_internal/src/LMCP/afrl/famus/AirVehicleConfiguration.h"
 
 namespace uxas
 {
@@ -150,8 +151,11 @@ private:
 
     void buildTaskPlanOptions()override;
 
+	double getLevelTurnRadius(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration>);
+
 private:
     std::shared_ptr<afrl::ttcp::PayloadDrop> m_payloadDrop;
+	float m_radiusBufferMultiplier = 1.1;
     // storage for the option entries
     // std::string m_option01{std::string("No Option 1")};
     // int32_t m_option02{0};
