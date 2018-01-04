@@ -321,6 +321,7 @@ void PlanBuilderService::processTaskImplementationResponse(const std::shared_ptr
                 if (afrl::cmasi::isGimbalState(payload))
                 {
                     auto gaa = new afrl::cmasi::GimbalAngleAction();
+					gaa->getAssociatedTaskList().push_back(taskImplementationResponse->getTaskID());
                     gaa->setPayloadID(payload->getPayloadID());
                     gaa->setAzimuth(0.0);
                     gaa->setElevation(-60.0);
