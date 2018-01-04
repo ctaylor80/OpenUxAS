@@ -25,7 +25,6 @@
 #include "afrl/impact/IMPACT.h"
 #include "uxas/messages/route/ROUTE.h"
 
-#include "afrl/vehicles/VEHICLES.h"
 #include "pugixml.hpp"
 
 #include <algorithm>

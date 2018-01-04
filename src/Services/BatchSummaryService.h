@@ -33,7 +33,6 @@
 #include <cstdint>
 #include "uxas/messages/task/TaskAutomationResponse.h"
 #include "uxas/messages/task/TaskAutomationRequest.h"
-#include "gsim/gs_polygon.h"
 
 namespace uxas
 {

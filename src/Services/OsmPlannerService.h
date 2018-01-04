@@ -32,7 +32,6 @@
 #include "uxas/messages/route/EgressRouteResponse.h"
 #include "uxas/messages/route/RoadPointsRequest.h"
 #include "uxas/messages/route/RoadPointsResponse.h"
-#include "uxas/messages/route/RoadPointsRequest.h"
 
 #include <boost/graph/astar_search.hpp>
 #include <boost/graph/graph_traits.hpp>
