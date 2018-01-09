@@ -88,6 +88,12 @@ ImpactPointSearchTaskService::configureTask(const pugi::xml_node& ndComponent)
                     isSuccessful = false;
                 }
             }
+			if (m_pointSearchTask->getDesiredAction() == nullptr)
+			{
+			    sstrErrors << "ERROR:: **ImpactPointSearchTaskService::bConfigure PointOfInterest. Missing Loiter Action " << std::endl;
+			    CERR_FILE_LINE_MSG(sstrErrors.str())
+			    isSuccessful = false;
+			}
         }
         else
         {
@@ -208,8 +214,8 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
         taskOption->setTaskID(taskId);
         taskOption->setOptionID(optionId);
         //taskOption->setCost();    // defaults to 0.0
-        taskOption->setStartLocation(m_pointSearchTask->getSearchLocation()->clone());
-        taskOption->setEndLocation(m_pointSearchTask->getSearchLocation()->clone());
+        taskOption->setStartLocation(m_pointSearchTask->getDesiredAction()->getLocation()->clone());
+        taskOption->setEndLocation(m_pointSearchTask->getDesiredAction()->getLocation()->clone());
         //            for(auto itEligibleEntities=m_speedAltitudeVsEligibleEntitesRequested.begin();itEligibleEntities!=m_speedAltitudeVsEligibleEntitesRequested.end();itEligibleEntities++)
         //            {
         //                taskOption->getEligibleEntities().insert(taskOption->getEligibleEntities().end(),itEligibleEntities->second.begin(),itEligibleEntities->second.end());
@@ -227,8 +233,8 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
         taskOption->setOptionID(optionId);
 
         //find standoff (start) location/
-        n_FrameworkLib::CPosition position(m_pointSearchTask->getSearchLocation()->getLatitude() * n_Const::c_Convert::dDegreesToRadians(),
-                                           m_pointSearchTask->getSearchLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
+        n_FrameworkLib::CPosition position(m_pointSearchTask->getDesiredAction()->getLocation()->getLatitude() * n_Const::c_Convert::dDegreesToRadians(),
+			                               m_pointSearchTask->getDesiredAction()->getLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
                                            0.0, 0.0);
         double newNorth_m = standoffDistance * cos(wedgeHeading_rad) + position.m_north_m;
         double newEast_m = standoffDistance * sin(wedgeHeading_rad) + position.m_east_m;
@@ -241,7 +247,7 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
         startLocation->setLongitude(longitude_rad * n_Const::c_Convert::dRadiansToDegrees());
         taskOption->setStartLocation(startLocation);
         startLocation = nullptr; // just gave up ownership
-        taskOption->setEndLocation(m_pointSearchTask->getSearchLocation()->clone());
+        taskOption->setEndLocation(m_pointSearchTask->getDesiredAction()->getLocation()->clone());
 
         auto routePlan = std::make_shared<uxas::messages::route::RoutePlan>();
 
@@ -307,7 +313,7 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
                                                                             int64_t& waypointId, std::shared_ptr<uxas::messages::route::RoutePlan>& route)
 {
 	//add the desired action, if any
-	if (!taskImplementationResponse->getTaskWaypoints().empty() && (m_pointSearchTask->getDesiredAction() != nullptr))
+	if (!taskImplementationResponse->getTaskWaypoints().empty())
 	{
 		if (m_entityStates.find(taskImplementationResponse.get()->getVehicleID()) != m_entityStates.end())
 		{
