@@ -33,6 +33,8 @@
 #include <sstream>      //std::stringstream
 #include <iostream>     // std::cout, cerr, etc
 #include <afrl/cmasi/GimbalConfiguration.h>
+#include <avtas/lmcp/LmcpXMLReader.h>
+#include <BatchSummaryService.h>
 
 
 #define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "IMPCT_PS-IMPCT_PS-IMPCT_PS-IMPCT_PS:: ImpactPointSearch:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
@@ -94,6 +96,28 @@ ImpactPointSearchTaskService::configureTask(const pugi::xml_node& ndComponent)
 			    CERR_FILE_LINE_MSG(sstrErrors.str())
 			    isSuccessful = false;
 			}
+
+            pugi::xml_node keepOutZones = ndComponent.child("KeepOutZones");
+            if (keepOutZones)
+            {
+                for (pugi::xml_node ndCurrent = keepOutZones.first_child(); ndCurrent; ndCurrent = ndCurrent.next_sibling())
+                {
+                    std::stringstream stringStream;
+                    ndCurrent.print(stringStream);
+                    avtas::lmcp::Object* object = avtas::lmcp::xml::readXML(stringStream.str());
+                    if (object == nullptr)
+                        continue;
+
+                    if (afrl::cmasi::isKeepOutZone(object))
+                    {
+                        std::shared_ptr<afrl::cmasi::KeepOutZone> koz;
+                        koz.reset(static_cast<afrl::cmasi::KeepOutZone*>(object->clone()));
+                        auto poly = BatchSummaryService::FromAbstractGeometry(koz->getBoundary());
+                        m_idVKeepOutZone[koz->getZoneID()] = poly;
+                    }
+                }
+
+            }
         }
         else
         {
@@ -208,6 +232,69 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
     auto startEndHeading_deg = n_Const::c_Convert::dNormalizeAngleRad((wedgeHeading_rad + n_Const::c_Convert::dPi()), 0.0) * n_Const::c_Convert::dRadiansToDegrees(); // [0,2PI) 
     taskOption->setStartHeading(startEndHeading_deg);
     taskOption->setEndHeading(startEndHeading_deg);
+    VisiLibity::Point newEnd;
+    bool newEndSet = false;
+    for (auto koz : m_idVKeepOutZone)
+    {
+        VisiLibity::Point p;
+        double north, east;
+        unitConversions.ConvertLatLong_degToNorthEast_m(m_pointSearchTask->getDesiredAction()->getLocation()->getLatitude(),
+                                                        m_pointSearchTask->getDesiredAction()->getLocation()->getLongitude(), north, east);
+        p.set_x(east);
+        p.set_y(north);
+
+        //use an extra offset to avoid jagged KOZs
+        auto bufferMultiplier = 1.5;
+
+        //check for point inside koz case
+        if (p.in(*koz.second))
+        {
+            UXAS_LOG_WARN("ImpactPointSearchTask Loiter Inside of KeepOutZone. Attempting to move point.");
+            //move the location outside the koz
+            auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
+            auto vector = VisiLibity::Point::normalize(bounderyPoint - p) * m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier;
+            newEnd = bounderyPoint + vector;
+            newEndSet = true;
+
+            break;
+        }
+        afrl::cmasi::Polygon *poly = new afrl::cmasi::Polygon();
+        auto length = m_pointSearchTask->getDesiredAction()->getRadius();
+        for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
+        {
+            double lat_deg, lon_deg;
+            
+            unitConversions.ConvertNorthEast_mToLatLong_deg(north + length * sin(rad), east + length * cos(rad), lat_deg, lon_deg);
+            auto loc = new afrl::cmasi::Location3D();
+            loc->setLatitude(lat_deg);
+            loc->setLongitude(lon_deg);
+            poly->getBoundaryPoints().push_back(loc);
+        }
+        auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
+
+        //check if loiter intersects the perimiter of the koz case
+        if (boundary_distance(*loiterArea, *koz.second) < .1)
+        {
+            UXAS_LOG_WARN("ImpactPointSearchTask Loiter Intersects KeepOutZone. Attempting to move point.");
+            //move the location outside the koz
+            auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
+            //the loiter center point is outside of the koz because of the checks above
+            auto vector = VisiLibity::Point::normalize(p - bounderyPoint) * m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier;
+            newEnd = bounderyPoint + vector;
+            newEndSet = true;
+
+            break;
+        }
+    }
+    if (newEndSet)
+    {
+        double latitude_deg(0.0);
+        double longitude_deg(0.0);
+        unitConversions.ConvertNorthEast_mToLatLong_deg(newEnd.y(), newEnd.x(), latitude_deg, longitude_deg);
+        m_pointSearchTask->getDesiredAction()->getLocation()->setLatitude(latitude_deg);
+        m_pointSearchTask->getDesiredAction()->getLocation()->setLongitude(longitude_deg);
+    }
+
 
     if (n_Const::c_Convert::bCompareDouble(standoffDistance, 0.0, n_Const::c_Convert::enLessEqual))
     {
