@@ -99,8 +99,9 @@
 			<Field Name="TrackChange" Type="TrackActionOptions" />
 		</Struct>
 		
-		<Struct Name="PayloadDrop" Extends="SearchTask" Series="CMASI">
+		<Struct Name="PayloadDropTask" Extends="Task" Series="CMASI">
 		    <Field Name="DropLocation" Type="Location3D" Series="CMASI" Default="null" Optional="false" />
+		    <Field Name="BDALocation" Type="Location3D" Series="CMASI" Default="null" Optional="false" />
 		</Struct>
 	
         
