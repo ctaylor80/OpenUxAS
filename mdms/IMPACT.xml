@@ -48,7 +48,7 @@
 <MDM>
     <SeriesName>IMPACT</SeriesName>
     <Namespace>afrl/impact</Namespace>
-    <Version>13</Version>
+    <Version>14</Version>
     
     <EnumList>
         
@@ -532,6 +532,11 @@
             <Field Name="StandoffDistance" Type="real32" Units="meters" Default="100" />
         </Struct>
 
+		<Struct Name="PayloadDropTask" Extends="Task" Series="CMASI">
+		    <Field Name="DropLocation" Type="Location3D" Series="CMASI" Default="null" Optional="false" />
+		    <Field Name="BDALocation" Type="Location3D" Series="CMASI" Default="null" Optional="false" />
+		</Struct>
+		
         <!-- Requests the latest configurations for vehicles in the system -->
         <Struct Name="ConfigurationRequest">
             <!-- Vehicle IDs for which the corresponding configuration should be sent. If the list is empty, all available configurations should be sent in response. -->

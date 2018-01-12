@@ -24,8 +24,6 @@
 #include "afrl/cmasi/KeyValuePair.h"
 
 #include <iostream>     // std::cout, cerr, etc
-#include <afrl/ttcp/Affiliation.h>
-#include <afrl/ttcp/PayloadDrop.h>
 #include <afrl/cmasi/AirVehicleConfiguration.h>
 #include <afrl/cmasi/LoiterAction.h>
 #include <UnitConversions.h>
@@ -69,9 +67,9 @@ bool
 
   if (isSuccessful)
   {
-    if (afrl::ttcp::isPayloadDropTask(m_task.get()))
+    if (afrl::impact::isPayloadDropTask(m_task.get()))
     {
-      m_payloadDrop = std::static_pointer_cast<afrl::ttcp::PayloadDropTask>(m_task);
+      m_payloadDrop = std::static_pointer_cast<afrl::impact::PayloadDropTask>(m_task);
       if (!m_payloadDrop)
       {
         /*sstrErrors << "ERROR:: **ImpactPointSearchTaskService::bConfigure failed to cast a ImpactPointSearchTask from the task pointer." << std::endl;

@@ -18,9 +18,8 @@
 #define UXAS_TASK_PAYLOADDROPTASK_H
 
 #include "TaskServiceBase.h"
-#include "afrl/ttcp/PayloadDropTask.h"
-#include "afrl/famus/AirVehicleConfiguration.h"
-
+#include "afrl/impact/PayloadDropTask.h"
+#include "afrl/cmasi/AirVehicleConfiguration.h"
 namespace uxas
 {
 namespace service
@@ -102,7 +101,7 @@ public:
     static const std::vector<std::string>
     s_registryServiceTypeNames()
     {
-        std::vector<std::string> registryServiceTypeNames = {s_typeName(),"afrl.ttcp.PayloadDropTask"};
+        std::vector<std::string> registryServiceTypeNames = {s_typeName(),"afrl.impact.PayloadDropTask"};
         return (registryServiceTypeNames);
     };
 
@@ -154,7 +153,7 @@ private:
 	double getLevelTurnRadius(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration>);
 
 private:
-    std::shared_ptr<afrl::ttcp::PayloadDropTask> m_payloadDrop;
+    std::shared_ptr<afrl::impact::PayloadDropTask> m_payloadDrop;
 	float m_radiusBufferMultiplier = 1.1;
     // storage for the option entries
     // std::string m_option01{std::string("No Option 1")};
