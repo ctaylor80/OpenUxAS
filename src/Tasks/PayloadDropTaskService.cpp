@@ -8,20 +8,16 @@
 // ===============================================================================
 
 /*
- * File:   00_PayloadDropTask.cpp
- * Author: steve
+ * File:   PayloadDropTaskService.cpp
+ * Author: Colin
  *
- * Created on March 22, 2017, 5:55 PM
+ * Created on December 21, 2017
  *
- * <Service Type="PayloadDropTask" OptionString="Option_01" OptionInt="36" />
  *
  */
 
  // include header for this service
 #include "PayloadDropTaskService.h"
-
-//include for KeyValuePair LMCP Message
-#include "afrl/cmasi/KeyValuePair.h"
 
 #include <iostream>     // std::cout, cerr, etc
 #include <afrl/cmasi/AirVehicleConfiguration.h>
@@ -29,10 +25,6 @@
 #include <UnitConversions.h>
 #include <afrl/cmasi/GimbalStareAction.h>
 #include <afrl/cmasi/GimbalConfiguration.h>
-
-// convenience definitions for the option strings
-#define STRING_XML_OPTION_STRING "OptionString"
-#define STRING_XML_OPTION_INT "OptionInt"
 
 // namespace definitions
 namespace uxas  // uxas::
@@ -124,11 +116,7 @@ void PayloadDropTaskService::buildTaskPlanOptions()
   {
     for (auto entityId : itEligibleEntities.second)
     {
-      //while (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, dHeadingCurrent_rad, n_Const::c_Convert::enGreaterEqual))
-      //{
         auto taskOption = new uxas::messages::task::TaskOption;
-        //auto startEndHeading_deg = n_Const::c_Convert::dNormalizeAngleRad((dHeadingCurrent_rad + n_Const::c_Convert::dPi()), 0.0) * n_Const::c_Convert::dRadiansToDegrees(); // [0,2PI) 
-
 
         taskOption->setTaskID(m_payloadDrop->getTaskID());
         taskOption->setOptionID(optionId);
@@ -152,10 +140,8 @@ void PayloadDropTaskService::buildTaskPlanOptions()
         unitConversions.ConvertLatLong_degToNorthEast_m(dropLocation->getLatitude(), dropLocation->getLongitude(), dropLocationNorth_m, dropLocationEast_m);
         unitConversions.ConvertLatLong_degToNorthEast_m(BDALocation->getLatitude(), BDALocation->getLongitude(), BDALocationNorth_m, BDALocationEast_m);
 
-      //TODO: probably fix math
         auto dHeadingTarget_rad = n_Const::c_Convert::dPiO2() - atan2(dropLocationNorth_m - BDALocationNorth_m, dropLocationEast_m - BDALocationEast_m);
       dHeadingTarget_rad = n_Const::c_Convert::dNormalizeAngleRad((dHeadingTarget_rad + n_Const::c_Convert::dPi()), 0.0) * n_Const::c_Convert::dRadiansToDegrees(); // [0,2PI) 
-      //TODO: move endHeading onto the loiter
         taskOption->setStartHeading(dHeadingTarget_rad);
         taskOption->setEndHeading(dHeadingTarget_rad);
 
@@ -185,7 +171,6 @@ void PayloadDropTaskService::buildTaskPlanOptions()
         routePlanRequest->setVehicleID(entityId);
 
         //add a constraint to be on the loiter from the payload drop
-
         auto entryConstraint = std::make_shared<messages::route::RouteConstraints>();
         entryConstraint->setStartLocation(dropLocation->clone());
         entryConstraint->setStartHeading(dHeadingTarget_rad);
@@ -204,8 +189,6 @@ void PayloadDropTaskService::buildTaskPlanOptions()
 
 
         optionId++;
-        //dHeadingCurrent_rad += wedgeDirectionIncrement;
-      //}
     }
   }
 

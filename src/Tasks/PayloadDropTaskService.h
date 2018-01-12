@@ -8,7 +8,7 @@
 // ===============================================================================
 
 /* 
- * File:   00_PayloadDropTask.h
+ * File:   PayloadDropTaskService.h
  * Author: Colin
  *
  * Created on December 21, 2017
@@ -29,8 +29,8 @@ namespace task
 
 
 /*! \class PayloadDropTask
-    \brief This is a basic task that can be used as a template when 
- * constructing new tasks.
+    \brief A Service that implements a PayloadDropTask.
+
 
  * 
  * 
@@ -155,9 +155,6 @@ private:
 private:
     std::shared_ptr<afrl::impact::PayloadDropTask> m_payloadDrop;
 	float m_radiusBufferMultiplier = 1.1;
-    // storage for the option entries
-    // std::string m_option01{std::string("No Option 1")};
-    // int32_t m_option02{0};
 };
 
 
