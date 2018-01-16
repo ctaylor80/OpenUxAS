@@ -129,6 +129,11 @@ ImpactSubscribePushBridge::configure(const pugi::xml_node& bridgeXmlNode)
         m_externalID = m_entityId;
     }
     
+    if (!m_isConsideredSelfGenerated)
+    {
+      addSubscriptionAddress(getNetworkClientUnicastAddress(m_externalID, m_networkId));
+    }
+
     return (true); // no failure criteria for this configuration set, reverts to defaults
 };
 
