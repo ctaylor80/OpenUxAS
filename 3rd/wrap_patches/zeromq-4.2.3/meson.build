@@ -2,7 +2,7 @@ project('zeromq', 'cpp')
 
 os = target_machine.system()
 cpp = meson.get_compiler('cpp')
-cpp_args = []
+cpp_args = ['-DHAVE_CXX11=1']
 deps = []
 cdata = configuration_data()
 
@@ -16,7 +16,9 @@ elif os == 'darwin'
 elif os == 'windows'
   cpp_args += [
     '-D_CRT_SECURE_NO_WARNINGS',
-	'-DFD_SETSIZE=4096',
+	'-D_WINSOCK_DEPRECATED_NO_WARNINGS',
+	'-DFD_SETSIZE=16384',
+	'-DWIN32_LEAN_AND_MEAN',
 	'-DZMQ_USE_SELECT',
 	'-DZMQ_STATIC',
 	'-DZMQ_HAVE_WINDOWS=1',
@@ -25,6 +27,7 @@ elif os == 'windows'
     cpp.find_library('Advapi32'),
 	cpp.find_library('Ws2_32'),
 	cpp.find_library('Rpcrt4'),
+	cpp.find_library('Iphlpapi'),
   ]
 endif
 
@@ -33,6 +36,7 @@ check_headers = [
   ['HAVE_ARPA_INET_H', 'arpa/inet.h'],
   ['HAVE_DLFCN_H', 'dlfcn.h'],
   ['HAVE_ERRNO_H', 'errno.h'],
+  ['HAVE_GSSAPI_GSSAPI_GENERIC_H', 'gssapi/gssapi_generic.h'],
   ['HAVE_IFADDRS_H', 'ifaddrs.h'],
   ['HAVE_INTTYPES_H', 'inttypes.h'],
   ['HAVE_LIMITS_H', 'limits.h'],
@@ -62,6 +66,11 @@ foreach h : check_headers
     if h.get(0) == 'HAVE_SYS_EVENTFD_H'
       cpp_args += ['-DZMQ_HAVE_EVENTFD']
     endif
+
+    if h.get(0) == 'HAVE_IFADDRS_H'
+      cpp_args += ['-DZMQ_HAVE_IFADDRS']
+    endif
+
   endif
 endforeach
 
@@ -70,14 +79,20 @@ if cpp.has_header('sys/uio.h')
   cpp_args += ['-DZMQ_HAVE_UIO']
 endif
 
+# check for both time and sys/time
+if cpp.has_header('time.h') and cpp.has_header('sys/time.h')
+  cpp_args += ['-DTIME_WITH_SYS_TIME']
+endif
+
 check_functions = [
+  ['HAVE_ACCEPT4', 'accept4', '#include <sys/socket.h>'],
   ['HAVE_CLOCK_GETTIME', 'clock_gettime', '#include<time.h>'],
 # check token ('HAVE_DECL_LOCAL_PEERCRED',)
 # check token ('HAVE_DECL_SO_PEERCRED',)
   ['HAVE_FORK', 'fork', '#include<unistd.h>'],
-# check token ('HAVE_FREEIFADDRS',)
-# check token ('HAVE_GETHRTIME',)
-# check token ('HAVE_GETIFADDRS',)
+  ['HAVE_FREEIFADDRS', 'freeifaddrs', '#include <ifaddrs.h>'],
+  ['HAVE_GETHRTIME', 'gethrtime', '#include <sys/time.h>'],
+  ['HAVE_GETIFADDRS', 'getifaddrs', '#include <ifaddrs.h>'],
   ['HAVE_GETTIMEOFDAY', 'gettimeofday', '#include<sys/time.h>'],
   ['HAVE_LIBGSSAPI_KRB5', 'gss_init_sec_context', '#include <gssapi/gssapi.h>'],
 # check token ('HAVE_LIBIPHLPAPI',)
@@ -88,7 +103,8 @@ check_functions = [
 # check token ('HAVE_LIBSOCKET',)
 # check token ('HAVE_LIBWS2_32',)
   ['HAVE_MEMSET', 'memset', '#include<string.h>'],
-# check token ('HAVE_PERROR',)
+  ['HAVE_POSIX_MEMALIGN', 'posix_memalign', '#include <stdlib.h>'],
+  ['HAVE_PERROR', 'perror', '#include <errno.h>'],
   ['HAVE_SOCKET', 'socket', '#include<sys/socket.h>'],
 # check token ('HAVE__BOOL',)
 ]
@@ -197,16 +213,22 @@ lib = static_library(
   'zeromq',
   [
     'src/address.cpp',
+    'src/client.cpp',
     'src/clock.cpp',
     'src/ctx.cpp',
     'src/curve_client.cpp',
+    'src/curve_mechanism_base.cpp',
     'src/curve_server.cpp',
     'src/dealer.cpp',
+    'src/decoder_allocators.cpp',
     'src/devpoll.cpp',
+    'src/dgram.cpp',
+    'src/dish.cpp',
     'src/dist.cpp',
     'src/epoll.cpp',
     'src/err.cpp',
     'src/fq.cpp',
+    'src/gather.cpp',
     'src/gssapi_client.cpp',
     'src/gssapi_mechanism_base.cpp',
     'src/gssapi_server.cpp',
@@ -219,7 +241,9 @@ lib = static_library(
     'src/kqueue.cpp',
     'src/lb.cpp',
     'src/mailbox.cpp',
+    'src/mailbox_safe.cpp',
     'src/mechanism.cpp',
+    'src/mechanism_base.cpp',
     'src/metadata.cpp',
     'src/msg.cpp',
     'src/mtrie.cpp',
@@ -237,11 +261,13 @@ lib = static_library(
     'src/plain_server.cpp',
     'src/poll.cpp',
     'src/poller_base.cpp',
+    'src/pollset.cpp',
     'src/precompiled.cpp',
     'src/proxy.cpp',
     'src/pub.cpp',
     'src/pull.cpp',
     'src/push.cpp',
+    'src/radio.cpp',
     'src/random.cpp',
     'src/raw_decoder.cpp',
     'src/raw_encoder.cpp',
@@ -249,10 +275,13 @@ lib = static_library(
     'src/rep.cpp',
     'src/req.cpp',
     'src/router.cpp',
+    'src/scatter.cpp',
     'src/select.cpp',
+    'src/server.cpp',
     'src/session_base.cpp',
     'src/signaler.cpp',
     'src/socket_base.cpp',
+    'src/socket_poller.cpp',
     'src/socks.cpp',
     'src/socks_connecter.cpp',
     'src/stream.cpp',
@@ -263,16 +292,24 @@ lib = static_library(
     'src/tcp_connecter.cpp',
     'src/tcp_listener.cpp',
     'src/thread.cpp',
+    'src/timers.cpp',
     'src/tipc_address.cpp',
     'src/tipc_connecter.cpp',
     'src/tipc_listener.cpp',
     'src/trie.cpp',
+    'src/udp_address.cpp',
+    'src/udp_engine.cpp',
     'src/v1_decoder.cpp',
     'src/v1_encoder.cpp',
     'src/v2_decoder.cpp',
     'src/v2_encoder.cpp',
+    'src/vmci.cpp',
+    'src/vmci_address.cpp',
+    'src/vmci_connecter.cpp',
+    'src/vmci_listener.cpp',
     'src/xpub.cpp',
     'src/xsub.cpp',
+    'src/zap_client.cpp',
     'src/zmq.cpp',
     'src/zmq_utils.cpp',
   ],

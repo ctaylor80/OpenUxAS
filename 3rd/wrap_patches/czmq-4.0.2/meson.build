@@ -64,12 +64,18 @@ elif os == 'darwin'
   c_args += ['-std=c11', '-D_DARWIN_C_SOURCE', '-DCZMQ_HAVE_OSX=1']
 elif os == 'windows'
   c_args += [
-    '-DZMQ_STATIC',
-    '-DLIBCZMQ_STATIC',
+	'-D_CRT_SECURE_NO_WARNINGS',
+	'-DBASE_THREADSAFE',
+    '-DCZMQ_STATIC',
+	'-DZMQ_USE_SELECT',
+	'-DZMQ_STATIC',
+	'-DLIBZMQ_STATIC',
+	'-DZMQ_HAVE_WINDOWS=1',
   ]
   cdata.set('CZMQ_HAVE_WINDOWS', 1)
   cdata.set('HAVE_LIBUUID', 1)
   deps += [
+    c.find_library('Rpcrt4'),
     c.find_library('Iphlpapi'),
 	c.find_library('WS2_32'),
   ]
@@ -85,15 +91,12 @@ lib = static_library(
     'src/zactor.c',
     'src/zarmour.c',
     'src/zauth.c',
-    'src/zauth_v2.c',
     'src/zbeacon.c',
-    'src/zbeacon_v2.c',
     'src/zcert.c',
     'src/zcertstore.c',
     'src/zchunk.c',
     'src/zclock.c',
     'src/zconfig.c',
-    'src/zctx.c',
     'src/zdigest.c',
     'src/zdir.c',
     'src/zdir_patch.c',
@@ -108,20 +111,14 @@ lib = static_library(
     'src/zlistx.c',
     'src/zloop.c',
     'src/zmonitor.c',
-    'src/zmonitor_v2.c',
     'src/zmsg.c',
-    'src/zmutex.c',
     'src/zpoller.c',
+    'src/zproc.c',
     'src/zproxy.c',
-    'src/zproxy_v2.c',
     'src/zrex.c',
     'src/zsock.c',
-    'src/zsock_option.c',
-    'src/zsocket.c',
-    'src/zsockopt.c',
     'src/zstr.c',
     'src/zsys.c',
-    'src/zthread.c',
     'src/zuuid.c',
   ],
   dependencies: deps,
@@ -129,6 +126,6 @@ lib = static_library(
   include_directories: include_directories(
     'include',
     'src',
-    '../zeromq-4.1.6/include'
+    '../zeromq-4.2.3/include'
   ),
 )
