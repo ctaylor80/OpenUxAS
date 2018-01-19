@@ -1,4 +1,5 @@
 srcs_tasks = [
+  'PayloadDropTaskService.cpp',
   '00_TaskTemplate.cpp',
   'AngledAreaSearchTaskService.cpp',
   'AssignmentCoordinatorTaskService.cpp',
