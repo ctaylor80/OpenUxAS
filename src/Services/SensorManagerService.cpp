@@ -226,6 +226,7 @@ void SensorManagerService::FindSensorFootPrint(const std::shared_ptr<afrl::cmasi
 
     if (altitudeAgl_m >= MIMIMUM_ASSIGNED_ALTITUDE_M) //sanity check
     {
+        bool firstGsdInitialized = false;
         for (auto& payloadConfiguration : entityConfiguration->getPayloadConfigurationList())
         {
             //find the camera configurations
@@ -297,7 +298,6 @@ void SensorManagerService::FindSensorFootPrint(const std::shared_ptr<afrl::cmasi
                                         {
                                             CERR_FILE_LINE_MSG("ERROR::FindSensorFootPrint:: unknown FieldOfViewMode[" << cameraConfiguration->getFieldOfViewMode() << "]")
                                         } //if(gimbalConfiguration->getFieldOfViewMode() == afrl::cmasi::FOVOperationMode::Discrete)
-                                        bool firstGsdInitialized = false;
                                         for (auto& horizantalFov_deg : horizontalFieldOfViewList)
                                         {
                                             // calculate GSD
