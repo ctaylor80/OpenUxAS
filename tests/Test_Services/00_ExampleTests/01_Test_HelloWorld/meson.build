@@ -1,7 +1,8 @@
 exe_HelloWorld_test01 = executable(
   'HelloWorld_test01',
   'HelloWorld_test01.cpp',
-  dependencies: deps,
+  srcs_test,
+  dependencies: deps_test,
   cpp_args: cpp_args_test,
   include_directories: inc_test,
   link_with: libs_test,

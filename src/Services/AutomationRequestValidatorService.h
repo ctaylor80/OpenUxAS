@@ -47,32 +47,7 @@ namespace service
  *  <Service Type="AutomationRequestValidatorService" MaxResponseTime_ms="5000"/>
  * 
  * Options:
- *  - MaxResponseTime_ms: waits for specified time before rejecting request and proceeding
- * 
- * Design: The objective of the Automation Request Validator is to ensure that a request
- *         can be fulfilled given the current state of received messages. For example,
- *         an Automation Request that includes a task that has not yet been defined. In 
- *         addition to checking for appropriately formed requests, the Automation Request
- *         Validator will abandon an attempt to fulfill a request if the system exceeds
- *         a pre-defined time threshold.
- * 
- * Details: To accommodate the case when tasks are defined and immediately followed by an
- *          automation request, a small grace period is needed to allow tasks to initialize
- *          themselves in preparation for the coming request. To accommodate this, the
- *          Automation Request Validator takes the following steps: (1) validate request; 
- *          (2) check that each requested task is initialized; (3) send unique automation
- *          request; (4) receive and publish response.
- * 
- *          If the request is valid, but tasks are not yet initialized, a timer is started
- *          waiting for 'MaxResponseTime_ms' which terminates the request and returns an
- *          error when it times out. When all relevant 'TaskInitialization' messages are
- *          received, then the timer is disabled and the unique automation request sent.
- * 
- *          After the unique automation request is sent, the timer is again enabled such
- *          that if 'MaxResponseTime_ms' elapses, the request will be abandoned and an
- *          error reported. The incorporation of the time-outs ensures that in the event
- *          of a task initialization or assignment pipeline failure, the system can still
- *          respond to subsequent requests.
+ *  - MaxResponseTime_ms
  * 
  * Subscribed Messages:
  *  - afrl::cmasi::AutomationRequest
@@ -162,35 +137,20 @@ private:
 
     bool
     processReceivedLmcpMessage(std::unique_ptr<uxas::communications::data::LmcpMessage> receivedLmcpMessage) override;
-    void HandleAutomationRequest(std::shared_ptr<avtas::lmcp::Object>& autoRequest);
-    void HandleAutomationResponse(std::shared_ptr<avtas::lmcp::Object>& autoResponse);
 
     ////////////////////////
     // TIMER CALLBACKS
     /*! \brief this function gets called when the response timer expires */
     void OnResponseTimeout();
-    /*! \brief this function gets called when the tasks involved have not reported initialization in time */
-    void OnTasksReadyTimeout();
-<<<<<<< HEAD
 
     bool isCheckAutomationRequestRequirements(const std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>& uniqueAutomationRequest);
-    void checkTasksInitialized();
-    void sendResponseError(std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> errorRequest, std::string errStr);
-    void sendNextRequest();
+    void checkToSendNextRequest();
+    void sendResponseError(int64_t reqID, std::string errStr);
     std::string generateDescription(std::vector<int64_t> vehicles, std::vector<int64_t> tasks);
 
-=======
-    
-    bool isCheckAutomationRequestRequirements(const std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>& uniqueAutomationRequest);
-    void checkTasksInitialized();
-    void sendNextRequest();
-    
->>>>>>> develop
-    /*! \brief  this timer is used to track time for the system to respond to automation requests */
+    /*! \brief  this timer is used to track time for the system to respond
+     * to automation requests*/
     uint64_t m_responseTimerId{0};
-    /*! \brief  this timer is used to track time for the system to wait for task initialization */
-    uint64_t m_taskInitTimerId{0};
-    
     /*! \brief  parameter indicating the maximum time to wait for a response (in ms)*/
     uint32_t m_maxResponseTime_ms = {5000}; // default: 5000 ms
 
@@ -201,29 +161,14 @@ private:
         TASK_AUTOMATION_REQUEST
     };
 
-    /*! \brief  data structure for tracking request type and associated play/solution IDs */
-    struct RequestDetails {
-        AutomationRequestType requestType{AUTOMATION_REQUEST};
-        int64_t playId{0};
-        int64_t solnId{0};
-        int64_t taskRequestId{0};
-        bool sandboxed{true};
-    };
-    
-    /*! \brief  data structure for tracking request type and associated play/solution IDs */
-    struct RequestDetails {
-        AutomationRequestType requestType{AUTOMATION_REQUEST};
-        int64_t playId{0};
-        int64_t solnId{0};
-        int64_t taskRequestId{0};
-    };
-    
+
     // storage
-    std::deque< std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> > m_pendingRequests;
-    std::deque< std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> > m_requestsWaitingForTasks;
-    
-    std::unordered_map<int64_t, RequestDetails> m_sandboxMap;
-    
+    std::deque< std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> > m_waitingRequests;
+    std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> m_waitingForResponse;
+    bool m_isAllClear{true};
+    std::unordered_map<int64_t, AutomationRequestType> m_sandboxMap;
+    std::unordered_map<int64_t, std::shared_ptr<afrl::impact::ImpactAutomationRequest>> m_UniqueAutomationRequestIDVsImpactAutomationRequest;
+
     std::unordered_set<int64_t> m_availableConfigurationEntityIds;
     std::unordered_set<int64_t> m_availableStateEntityIds;
     std::unordered_set<int64_t> m_availableKeepInZoneIds;
@@ -233,14 +178,10 @@ private:
     std::unordered_set<int64_t> m_availablePointOfInterestIds;
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::OperatingRegion> > m_availableOperatingRegions;
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Task> > m_availableTasks;
-    std::unordered_set<int64_t> m_availableInitializedTasks;
-<<<<<<< HEAD
+    std::unordered_set<int64_t> m_availableStartedTaskIds;
     std::list<std::shared_ptr<messages::task::TaskImplementationResponse>> m_availableTaskResponses;
 
     std::unordered_set<int64_t> m_timedOutRequests;
-=======
-    
->>>>>>> develop
 };
 
 }; //namespace service
