@@ -576,26 +576,26 @@ void BatchSummaryService::UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, 
     }
 
     //set timeOnTask and timeToArrive
-    afrl::cmasi::Waypoint* prev = *task_begin;
+    afrl::cmasi::Waypoint* prev = nullptr;
     double timeOnTask = 0.0;
     double timeToArrive = 0.0;
-    bool onTask = false;
-    for (auto wp = task_begin + 1; wp != task_end; wp++)
+    bool onTask;
+    for (auto wp = task_begin; wp != task_end; wp++)
     {
-        if (!(*wp)->getAssociatedTasks().empty())
-        {
-            onTask = true;
-        }
+      if (prev)
+      {
+        onTask = !prev->getAssociatedTasks().empty();
 
         auto timeFromPrev = unitConversions.dGetLinearDistance_m_Lat1Long1_deg_To_Lat2Long2_deg(prev->getLatitude(), prev->getLongitude(), (*wp)->getLatitude(), (*wp)->getLongitude()) / (*wp)->getSpeed();
         if (onTask)
         {
-            timeOnTask += timeFromPrev;
+          timeOnTask += timeFromPrev;
         }
         else
         {
-            timeToArrive += timeFromPrev;
+          timeToArrive += timeFromPrev;
         }
+      }
         prev = *wp;
     }
 
