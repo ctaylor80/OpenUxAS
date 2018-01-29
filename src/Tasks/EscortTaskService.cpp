@@ -98,7 +98,8 @@ EscortTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
 		}
         else
         {
-            UXAS_LOG_ERROR("escort supported entity ", m_escortTask->getSupportedEntityID(), "does not exist at task creation");
+            UXAS_LOG_ERROR("Escort Task ", m_escortTask->getTaskID(), " supported entity ", m_escortTask->getSupportedEntityID(), " Does Not Exist");
+            isSuccessful = false;
         }
 
     } //if(isSuccessful)

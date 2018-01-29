@@ -89,26 +89,45 @@ CommRelayTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
     } //isSuccessful
     if (isSuccessful)
     {
-		if (m_entityStates.find(m_CommRelayTask->getSupportedEntityID()) != m_entityStates.end())
-		{
-			m_supportedEntityStateLast = m_entityStates[m_CommRelayTask->getSupportedEntityID()];
-		}
+        if (m_CommRelayTask->getSupportedEntityID() == 0)
+        {
+            if (m_CommRelayTask->getDestinationLocation() != nullptr)
+            {
+                m_supportedEntityStateLast = std::shared_ptr<afrl::cmasi::Location3D>(m_CommRelayTask->getDestinationLocation()->clone());
+            }
+        }
         else
         {
-            UXAS_LOG_ERROR("**CommRelayTaskService: supportedEntityID ", m_CommRelayTask->getSupportedEntityID(), " does not exist");
+            if (m_entityStates.find(m_CommRelayTask->getSupportedEntityID()) != m_entityStates.end())
+            {
+                m_supportedEntityStateLast = std::shared_ptr<afrl::cmasi::Location3D>(m_entityStates[m_CommRelayTask->getSupportedEntityID()]->getLocation()->clone());
+            }
+            else
+            {
+                UXAS_LOG_ERROR("**CommRelayTaskService: supportedEntityID ", m_CommRelayTask->getSupportedEntityID(), " does not exist");
+                isSuccessful = false;
+            }
         }
+
         auto towerId = m_CommRelayTask->getTowerID();
         if (m_entityStates.find(towerId) == m_entityStates.end())
         {
             UXAS_LOG_ERROR("**CommRelayTaskService: tower with ID ", towerId, " does not exist");
+            isSuccessful = false;
         }
 
         if (m_entityConfigurations.find(towerId) != m_entityConfigurations.end())
         {
             if (!afrl::impact::isRadioTowerConfiguration(m_entityConfigurations[towerId].get()))
             {
-                UXAS_LOG_ERROR("**CommRelayTaskService: entity with ID ", towerId, " is not a radio tower");
+                UXAS_LOG_ERROR("**CommRelayTaskService: entity  config with ID ", towerId, " is not a radio tower");
+                isSuccessful = false;
             }
+        }
+        else
+        {
+            UXAS_LOG_ERROR("CommRelayTaskService: radio tower ID ", towerId, " does not exist");
+            isSuccessful = false;
         }
 
     } //if(isSuccessful)
@@ -125,7 +144,7 @@ CommRelayTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avta
     {
         if (entityState->getID() == m_CommRelayTask->getSupportedEntityID())
         {
-            m_supportedEntityStateLast = entityState;
+            m_supportedEntityStateLast = std::shared_ptr<afrl::cmasi::Location3D>(entityState->getLocation()->clone());
         }
     }
     return (false); // always false implies never terminating service from here
@@ -202,7 +221,7 @@ std::shared_ptr<afrl::cmasi::Location3D> CommRelayTaskService::calculateTargetLo
         double north, east;
         flatEarth.ConvertLatLong_degToNorthEast_m(towerLocation->getLatitude(), towerLocation->getLongitude(), north, east);
         Dpss_Data_n::xyPoint tower(east, north);
-        flatEarth.ConvertLatLong_degToNorthEast_m(m_supportedEntityStateLast->getLocation()->getLatitude(), m_supportedEntityStateLast->getLocation()->getLongitude(), north, east);
+        flatEarth.ConvertLatLong_degToNorthEast_m(m_supportedEntityStateLast->getLatitude(), m_supportedEntityStateLast->getLongitude(), north, east);
         Dpss_Data_n::xyPoint target(east, north);
 
         // go halfway between 'targetLocation' and 'tower' TODO: make this more efficient?
@@ -232,10 +251,10 @@ bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & op
         taskOption->setTaskID(taskId);
         taskOption->setOptionID(optionId);
         taskOption->getEligibleEntities() = m_CommRelayTask->getEligibleEntities();
-        taskOption->setStartLocation(m_supportedEntityStateLast->getLocation()->clone());
-        taskOption->setStartHeading(m_supportedEntityStateLast->getHeading());
-        taskOption->setEndLocation(m_supportedEntityStateLast->getLocation()->clone());
-        taskOption->setEndHeading(m_supportedEntityStateLast->getHeading());
+        taskOption->setStartLocation(m_supportedEntityStateLast->clone());
+        //taskOption->setStartHeading(m_supportedEntityStateLast->getHeading());
+        taskOption->setEndLocation(m_supportedEntityStateLast->clone());
+        //taskOption->setEndHeading(m_supportedEntityStateLast->getHeading());
         auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
         m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
         m_taskPlanOptions->getOptions().push_back(taskOption);
@@ -337,7 +356,7 @@ std::shared_ptr<afrl::cmasi::VehicleActionCommand> CommRelayTaskService::Calcula
         afrl::cmasi::GimbalStareAction* gimbalAction = new afrl::cmasi::GimbalStareAction;
         gimbalAction->setDuration(-1);
         gimbalAction->setPayloadID(gimbalId.at(g));
-        gimbalAction->setStarepoint(m_supportedEntityStateLast->getLocation()->clone());
+        gimbalAction->setStarepoint(m_supportedEntityStateLast->clone());
         gimbalAction->getAssociatedTaskList().push_back(m_task->getTaskID());
         caction->getVehicleActionList().push_back(gimbalAction->clone());
     }

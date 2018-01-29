@@ -195,7 +195,7 @@ private:
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon);
 private:
     std::shared_ptr<afrl::impact::CommRelayTask> m_CommRelayTask;
-    std::shared_ptr<afrl::cmasi::EntityState> m_supportedEntityStateLast;
+    std::shared_ptr<afrl::cmasi::Location3D> m_supportedEntityStateLast;
     double m_loiterRadius_m = {200.0};
     std::unordered_map<int64_t, int64_t> m_throttle;
 public:

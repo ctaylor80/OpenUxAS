@@ -105,7 +105,6 @@ namespace task
                     return;
                 }
             }
-            //recalculate
         }
 
         auto loc = calculateTargetLocation(entityState);

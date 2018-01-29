@@ -742,27 +742,6 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
                     }
                 }
             }
-                else if (itTask->second->getFullLmcpTypeName() == afrl::impact::EscortTask::Subscription) {
-                    auto escortTask = std::static_pointer_cast<afrl::impact::EscortTask>(itTask->second);
-                    if (m_availableStateEntityIds.find(escortTask->getSupportedEntityID()) == m_availableStateEntityIds.end()) {
-                        reasonForFailure << "- Entity State Id[" << escortTask->getSupportedEntityID() << "] not available." << std::endl;
-                        isReady = false;
-                    }
-                }
-                else if (itTask->second->getFullLmcpTypeName() == afrl::impact::CommRelayTask::Subscription) {
-                    auto commRelay = std::static_pointer_cast<afrl::impact::CommRelayTask>(itTask->second);
-                    if (m_availableStateEntityIds.find(commRelay->getSupportedEntityID()) == m_availableStateEntityIds.end()) {
-                        reasonForFailure << "- Entity State Id[" << commRelay->getSupportedEntityID() << "] not available." << std::endl;
-                        isReady = false;
-                    }
-                }
-                else if (itTask->second->getFullLmcpTypeName() == afrl::impact::WatchTask::Subscription) {
-                    auto watchTask = std::static_pointer_cast<afrl::impact::WatchTask>(itTask->second);
-                    if (m_availableStateEntityIds.find(watchTask->getWatchedEntityID()) == m_availableStateEntityIds.end()) {
-                        reasonForFailure << "- Entity State Id[" << watchTask->getWatchedEntityID() << "] not available." << std::endl;
-                        isReady = false;
-                    }
-                }
         }
         else
         {

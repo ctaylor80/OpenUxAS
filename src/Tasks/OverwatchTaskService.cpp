@@ -54,7 +54,6 @@ OverwatchTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
 
 {
     std::string strBasePath = m_workDirectoryPath;
-    std::stringstream sstrErrors;
 
     bool isSuccessful(true);
 
@@ -71,7 +70,6 @@ OverwatchTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
         }
         else
         {
-            sstrErrors << "ERROR:: **OverwatchTaskService::bConfigure failed: taskObject[" << m_task->getFullLmcpTypeName() << "] is not a WatchTask." << std::endl;
 			UXAS_LOG_ERROR("**OverwatchTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a WatchTask.");
             isSuccessful = false;
         }
@@ -81,6 +79,11 @@ OverwatchTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
 	{
 		m_watchedEntityStateLast = m_entityStates[m_watchTask->getWatchedEntityID()];
 	}
+    else
+    {
+        UXAS_LOG_ERROR("Overwatch Task ", m_watchTask->getTaskID(), " Watched Entity ID ", m_watchTask->getWatchedEntityID(), " Does Not Exist");
+        isSuccessful = false;
+    }
 
     m_straightLineThreshold_m = m_loiterRadius_m * 1.5;
 
