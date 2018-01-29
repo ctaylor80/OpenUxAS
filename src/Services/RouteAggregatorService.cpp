@@ -21,7 +21,6 @@
 #include "UnitConversions.h"
 #include "DRand.h"
 #include "Constants/UxAS_String.h"
-#include "afrl/vehicles/VEHICLES.h"
 
 #include <map>
 

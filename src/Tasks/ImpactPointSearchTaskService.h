@@ -27,6 +27,7 @@
 #include "uxas/messages/task/TaskPlanOptions.h"
 #include "uxas/messages/task/TaskImplementationRequest.h"
 #include "uxas/messages/route/RoutePlan.h"
+#include "afrl/cmasi/KeepOutZone.h"
 #include "visilibity.h"
 
 #include <cstdint> // int64_t
@@ -176,7 +177,7 @@ private:
 private:
     std::shared_ptr<afrl::impact::ImpactPointSearchTask> m_pointSearchTask;
     std::shared_ptr<afrl::impact::PointOfInterest> m_pointOfInterest;
-
+	std::unordered_map < int64_t, std::shared_ptr<VisiLibity::Polygon > > m_idVKeepOutZone;
 };
 
 }; //namespace task
