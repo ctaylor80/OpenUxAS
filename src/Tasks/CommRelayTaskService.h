@@ -193,6 +193,7 @@ private:
 private:
     bool isCalculateOption(const int64_t& taskId, int64_t& optionId);
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon);
+    void moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi::Location3D>& supportedEntityStateLocation);
 private:
     std::shared_ptr<afrl::impact::CommRelayTask> m_CommRelayTask;
     std::shared_ptr<afrl::cmasi::Location3D> m_supportedEntityStateLast;

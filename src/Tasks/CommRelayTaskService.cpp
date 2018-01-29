@@ -193,28 +193,38 @@ std::shared_ptr<afrl::cmasi::Location3D> CommRelayTaskService::calculateTargetLo
             alt = m_entityConfigurations[entityState->getID()]->getNominalAltitude();
         }
 
-        // extract location of tower
-        int64_t towerId = m_CommRelayTask->getTowerID();
-        std::shared_ptr<afrl::cmasi::Location3D> towerLocation{ nullptr };
-        if (m_entityStates.find(towerId) != m_entityStates.end())
-        {
-            towerLocation.reset(m_entityStates[towerId]->getLocation()->clone());
-        }
+        moveToHalfWayPoint(middle);
+        middle->setAltitude(alt);
 
-        if (!towerLocation)
+    }
+    return middle;
+}
+
+void CommRelayTaskService::moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi::Location3D>& supportedEntityStateLocation)
+{
+
+    // extract location of tower
+    int64_t towerId = m_CommRelayTask->getTowerID();
+    std::shared_ptr<afrl::cmasi::Location3D> towerLocation{ nullptr };
+    if (m_entityStates.find(towerId) != m_entityStates.end())
+    {
+        towerLocation.reset(m_entityStates[towerId]->getLocation()->clone());
+    }
+
+    if (!towerLocation)
+    {
+        if (m_entityConfigurations.find(towerId) != m_entityConfigurations.end())
         {
-            if (m_entityConfigurations.find(towerId) != m_entityConfigurations.end())
+            if (afrl::impact::isRadioTowerConfiguration(m_entityConfigurations[towerId].get()))
             {
-                if (afrl::impact::isRadioTowerConfiguration(m_entityConfigurations[towerId].get()))
-                {
-                    auto config = std::static_pointer_cast<afrl::impact::RadioTowerConfiguration>(m_entityConfigurations[towerId]);
-                    towerLocation.reset(config->getPosition()->clone());
-                }
+                auto config = std::static_pointer_cast<afrl::impact::RadioTowerConfiguration>(m_entityConfigurations[towerId]);
+                towerLocation.reset(config->getPosition()->clone());
             }
         }
+    }
 
-        if (!towerLocation) // don't care if not enabled, still attempt relay
-            return middle;
+    if (!towerLocation) // don't care if not enabled, still attempt relay
+        return;
 
         // determine destination location
         uxas::common::utilities::CUnitConversions flatEarth;
@@ -232,13 +242,8 @@ std::shared_ptr<afrl::cmasi::Location3D> CommRelayTaskService::calculateTargetLo
         double lat, lon;
         flatEarth.ConvertNorthEast_mToLatLong_deg(target.y, target.x, lat, lon);
 
-        //auto loc = std::make_shared<afrl::cmasi::Location3D>();
-        middle->setLatitude(lat);
-        middle->setLongitude(lon);
-        middle->setAltitude(alt);
-
-    }
-    return middle;
+        supportedEntityStateLocation->setLatitude(lat);
+        supportedEntityStateLocation->setLongitude(lon);
 }
 
 bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & optionId)
@@ -251,9 +256,11 @@ bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & op
         taskOption->setTaskID(taskId);
         taskOption->setOptionID(optionId);
         taskOption->getEligibleEntities() = m_CommRelayTask->getEligibleEntities();
-        taskOption->setStartLocation(m_supportedEntityStateLast->clone());
+        auto halfWayPoint = std::shared_ptr<afrl::cmasi::Location3D>(m_supportedEntityStateLast->clone());
+        moveToHalfWayPoint(halfWayPoint);
+        taskOption->setStartLocation(halfWayPoint->clone());
         //taskOption->setStartHeading(m_supportedEntityStateLast->getHeading());
-        taskOption->setEndLocation(m_supportedEntityStateLast->clone());
+        taskOption->setEndLocation(halfWayPoint->clone());
         //taskOption->setEndHeading(m_supportedEntityStateLast->getHeading());
         auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
         m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
