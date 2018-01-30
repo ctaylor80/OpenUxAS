@@ -235,6 +235,7 @@ namespace task
         }
         afrl::cmasi::LoiterAction* surveyAction = new afrl::cmasi::LoiterAction;
         surveyAction->setLocation(loc->clone());
+        surveyAction->getLocation()->setAltitude(config->getNominalAltitude());
         surveyAction->setAirspeed(surveySpeed);
         surveyAction->setRadius(surveyRadius);
         surveyAction->setDirection(afrl::cmasi::LoiterDirection::CounterClockwise);
