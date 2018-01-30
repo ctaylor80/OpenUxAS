@@ -273,7 +273,8 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
         auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
 
         //check if loiter intersects the perimiter of the koz case
-        if (boundary_distance(*loiterArea, *koz.second) < .1)
+        if ( loiterArea->n() > 0 && koz.second->n() > 0 &&
+            boundary_distance(*loiterArea, *koz.second) < .1)
         {
             UXAS_LOG_WARN("ImpactPointSearchTask Loiter Intersects KeepOutZone. Attempting to move point.");
             //move the location outside the koz
