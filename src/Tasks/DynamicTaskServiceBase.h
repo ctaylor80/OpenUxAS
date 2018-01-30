@@ -20,6 +20,8 @@
 #include "TimeUtilities.h"
 #include "visilibity.h"
 #include "UnitConversions.h"
+#include "../../UxAS-afrl_internal/src/LMCP/afrl/cmasi/GimbalStareAction.h"
+#include "../../UxAS-afrl_internal/src/LMCP/afrl/cmasi/LoiterAction.h"
 
 namespace uxas
 {
@@ -59,6 +61,10 @@ namespace task
         virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) {};
         virtual bool configureDynamicTask(const pugi::xml_node& serviceXmlNode) { return true; };
 
+
+        //helper methods
+        std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc);
+        std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc);
         std::unordered_map<int64_t, int64_t> m_throttle;
         std::unordered_map<int64_t, int64_t> m_entityIdVsLastWaypoint;
     };

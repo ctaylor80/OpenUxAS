@@ -162,7 +162,6 @@ private:
     virtual bool processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
 
     virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
-    virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) override;
 
     virtual void buildTaskPlanOptions() override;
 
@@ -171,7 +170,6 @@ private:
 private:
     std::shared_ptr<afrl::impact::WatchTask> m_watchTask;
     std::shared_ptr<afrl::cmasi::EntityState> m_watchedEntityStateLast;
-    double m_loiterRadius_m = {200.0};
 };
 
 }; //namespace task

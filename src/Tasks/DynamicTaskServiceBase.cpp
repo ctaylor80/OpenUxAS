@@ -13,6 +13,10 @@
 */
 #include "DynamicTaskServiceBase.h"
 #include "afrl/vehicles/GroundVehicleState.h"
+#include <afrl/cmasi/GimbalConfiguration.h>
+#include <afrl/vehicles/GroundVehicleConfiguration.h>
+#include <afrl/vehicles/SurfaceVehicleConfiguration.h>
+#include <afrl/cmasi/AirVehicleConfiguration.h>
 
 
 namespace uxas
@@ -60,6 +64,30 @@ namespace task
 
                 mish->setVehicleID(response->getVehicleID());
                 mish->setFirstWaypoint(mish->getWaypointList().front()->getNumber());
+
+                //add gimbal and loiter commands
+                if (m_entityConfigurations.find(mish->getVehicleID()) != m_entityConfigurations.end() && 
+                    m_targetLocations.find(mish->getVehicleID()) != m_targetLocations.end())
+                {
+                    auto firstWaypoint = mish->getWaypointList().front();
+                    auto lastWaypont = mish->getWaypointList().back();
+
+                    auto config = std::shared_ptr<afrl::cmasi::EntityConfiguration>(m_entityConfigurations[mish->getVehicleID()]);
+                    auto loc = std::shared_ptr<afrl::cmasi::Location3D>(m_targetLocations[mish->getVehicleID()]);
+
+                    auto gimbalActions = calculateGimbalStareAction(config, loc);
+                    auto loiterActions = calculateLoiterAction(config, loc);
+
+                    for (auto gimbalAction : gimbalActions->getVehicleActionList())
+                    {
+                        firstWaypoint->getVehicleActionList().push_back(gimbalAction->clone());
+                    }
+                    for (auto loiterAction : loiterActions->getVehicleActionList())
+                    {
+                        lastWaypont->getVehicleActionList().push_back(loiterAction->clone());
+                    }
+                }
+
 
                 processMissionCommand(mish);
 
@@ -160,6 +188,61 @@ namespace task
         request->getRouteRequests().push_back(constraint);
 
         sendSharedLmcpObjectBroadcastMessage(request);
+    }
+
+    std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc)
+    {
+        auto vehicleActionCommand = std::make_shared<afrl::cmasi::VehicleActionCommand>();
+
+        for (auto payloadConfig : config->getPayloadConfigurationList())
+        {
+            if (afrl::cmasi::isGimbalConfiguration(payloadConfig))
+            {
+                afrl::cmasi::GimbalStareAction* gimbalAction = new afrl::cmasi::GimbalStareAction;
+                gimbalAction->setDuration(-1);
+                gimbalAction->setPayloadID(payloadConfig->getPayloadID());
+                gimbalAction->setStarepoint(loc->clone());
+                gimbalAction->getAssociatedTaskList().push_back(m_task->getTaskID());
+                vehicleActionCommand->getVehicleActionList().push_back(gimbalAction->clone());
+            }
+        }
+        return vehicleActionCommand;
+    }
+    std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc)
+    {
+        auto vehicleActionCommand = std::make_shared<afrl::cmasi::VehicleActionCommand>();
+
+        double surveyRadius = 0.0;
+        double surveySpeed = config->getNominalSpeed();
+        auto surveyType = afrl::cmasi::LoiterType::Circular;
+
+        // calculate proper radius
+        if (afrl::vehicles::isGroundVehicleConfiguration(config.get()) ||
+            afrl::vehicles::isSurfaceVehicleConfiguration(config.get()))
+        {
+            surveyRadius = 0.0;
+            surveyType = afrl::cmasi::LoiterType::Hover;
+        }
+        else if (afrl::cmasi::isAirVehicleConfiguration(config.get()))
+        {
+            double speed = config->getNominalSpeed();
+            double bank = 25.0 * n_Const::c_Convert::dDegreesToRadians();
+            // Note: R = V/omega for coordinated turn omega = g*tan(phi)/V
+            // Therefore: R = V^2/(g*tan(phi))
+            surveyRadius = speed * speed / (9.80665 * tan(bank));
+            // round up to the nearest 100m
+            surveyRadius = std::ceil(surveyRadius / 100.0)*100.0;
+        }
+        afrl::cmasi::LoiterAction* surveyAction = new afrl::cmasi::LoiterAction;
+        surveyAction->setLocation(loc->clone());
+        surveyAction->setAirspeed(surveySpeed);
+        surveyAction->setRadius(surveyRadius);
+        surveyAction->setDirection(afrl::cmasi::LoiterDirection::CounterClockwise);
+        surveyAction->setDuration(-1);
+        surveyAction->setLoiterType(surveyType);
+        surveyAction->getAssociatedTaskList().push_back(m_task->getTaskID());
+        vehicleActionCommand->getVehicleActionList().push_back(surveyAction);
+        return vehicleActionCommand;
     }
 }
 }

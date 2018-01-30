@@ -173,20 +173,17 @@ private:
     virtual bool processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
 
     virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
-    virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) override;
 
     virtual void buildTaskPlanOptions() override;
 
 private:
     bool isCalculateOption(const int64_t& taskId, int64_t& optionId, const std::vector<int64_t>& eligibleEntities);
     void CalculateTargetPoint(std::shared_ptr<afrl::cmasi::Location3D>& targetLocation, double targetHeading, double targetSpeed, std::shared_ptr<afrl::impact::EscortTask>& task);
-    std::shared_ptr<afrl::cmasi::VehicleActionCommand> CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon);
     double DistanceToLine(std::shared_ptr<afrl::cmasi::Location3D>& loc, std::shared_ptr<afrl::impact::LineOfInterest>& path);
     bool FlipLine(std::shared_ptr<afrl::cmasi::Location3D>& loc, double heading, std::shared_ptr<afrl::impact::LineOfInterest>& path);
 private:
     std::shared_ptr<afrl::impact::EscortTask> m_escortTask;
     std::shared_ptr<afrl::cmasi::EntityState> m_supportedEntityStateLast;
-    double m_loiterRadius_m = {200.0};
 };
 
 }; //namespace task

@@ -85,8 +85,6 @@ OverwatchTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
         isSuccessful = false;
     }
 
-    m_straightLineThreshold_m = m_loiterRadius_m * 1.5;
-
     return (isSuccessful);
 }
 
@@ -108,54 +106,6 @@ OverwatchTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avta
 
 void OverwatchTprocessMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>);
 
-void OverwatchTaskService::processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand> mish)
-{
-
-    auto lastWaypoint = mish->getWaypointList().back();
-    // point the camera at the search point
-    //vehicleActionCommand->setCommandID();
-    //vehicleActionCommand->setStatus();
-    auto gimbalStareAction = new afrl::cmasi::GimbalStareAction;
-    gimbalStareAction->setStarepoint(m_watchedEntityStateLast->getLocation()->clone());
-    if (m_entityConfigurations.find(mish->getVehicleID()) != m_entityConfigurations.end())
-    {
-        auto config = m_entityConfigurations[mish->getVehicleID()];
-        for (auto payload : config->getPayloadConfigurationList())
-        {
-            if (afrl::cmasi::isGimbalConfiguration(payload))
-            {
-                gimbalStareAction->setPayloadID(payload->getPayloadID());
-            }
-        }
-    }
-    lastWaypoint->getVehicleActionList().push_back(gimbalStareAction);
-    gimbalStareAction = nullptr; //gave up ownership
-                                 // add the loiter
-    auto loiterAction = new afrl::cmasi::LoiterAction;
-    loiterAction->setLocation(m_watchedEntityStateLast->getLocation()->clone());
-    if (loiterAction->getLocation()->getAltitude() < 5) //too close to ground
-    {
-        //TODO: use current entityStates altitude
-    }
-    if (m_entityConfigurations.find(mish->getVehicleID()) != m_entityConfigurations.end())
-    {
-        auto config = m_entityConfigurations[mish->getVehicleID()];
-        loiterAction->setAirspeed(config->getNominalSpeed());
-        loiterAction->getLocation()->setAltitude(config->getNominalAltitude());
-    }
-    else
-    {
-        UXAS_LOG_ERROR("ERROR::Task_WatchTask:: no EntityConfiguration found for Entity[" + std::to_string(mish->getVehicleID()) + "]");
-    }
-    loiterAction->setRadius(m_loiterRadius_m);
-    loiterAction->setAxis(0.0);
-    loiterAction->setDirection(afrl::cmasi::LoiterDirection::Clockwise);
-    loiterAction->setDuration(-1.0);
-    loiterAction->setLength(0.0);
-    loiterAction->setLoiterType(afrl::cmasi::LoiterType::Circular);
-    lastWaypoint->getVehicleActionList().push_back(loiterAction);
-    loiterAction = nullptr; //gave up ownership
-}
 
 void OverwatchTaskService::buildTaskPlanOptions()
 {

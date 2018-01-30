@@ -187,18 +187,14 @@ private:
 
     virtual void buildTaskPlanOptions() override;
     virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
-    virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) override;
 
 
 private:
     bool isCalculateOption(const int64_t& taskId, int64_t& optionId);
-    std::shared_ptr<afrl::cmasi::VehicleActionCommand> CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon);
     void moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi::Location3D>& supportedEntityStateLocation);
 private:
     std::shared_ptr<afrl::impact::CommRelayTask> m_CommRelayTask;
     std::shared_ptr<afrl::cmasi::Location3D> m_supportedEntityStateLast;
-    double m_loiterRadius_m = {200.0};
-    std::unordered_map<int64_t, int64_t> m_throttle;
 public:
 
 };
