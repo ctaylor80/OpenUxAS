@@ -106,66 +106,6 @@ OverwatchTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avta
 
 void OverwatchTprocessMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>);
 
-
-void OverwatchTaskService::buildTaskPlanOptions()
-{
-    bool isSuccessful{true};
-
-    int64_t optionId(1);
-    int64_t taskId(m_watchTask->getTaskID());
-
-    if (isCalculateOption(taskId, optionId, m_watchTask->getEligibleEntities()))
-    {
-        optionId++;
-    }
-
-    std::string compositionString("+(");
-    for (auto itOption = m_taskPlanOptions->getOptions().begin(); itOption != m_taskPlanOptions->getOptions().end(); itOption++)
-    {
-        compositionString += "p";
-        compositionString += std::to_string((*itOption)->getOptionID());
-        compositionString += " ";
-    }
-    compositionString += ")";
-
-    m_taskPlanOptions->setComposition(compositionString);
-
-    // send out the options
-    if (isSuccessful)
-    {
-        auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
-        sendSharedLmcpObjectBroadcastMessage(newResponse);
-    }
-};
-
-bool OverwatchTaskService::isCalculateOption(const int64_t& taskId, int64_t& optionId, const std::vector<int64_t>& eligibleEntities) {
-    bool isSuccessful{true};
-
-    if (m_watchedEntityStateLast)
-    {
-        auto taskOption = new uxas::messages::task::TaskOption;
-        taskOption->setTaskID(taskId);
-        taskOption->setOptionID(optionId);
-        taskOption->getEligibleEntities() = eligibleEntities;
-        taskOption->setStartLocation(m_watchedEntityStateLast->getLocation()->clone());
-        taskOption->setStartHeading(m_watchedEntityStateLast->getHeading());
-        taskOption->setEndLocation(m_watchedEntityStateLast->getLocation()->clone());
-        taskOption->setEndHeading(m_watchedEntityStateLast->getHeading());
-        auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
-        m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
-        m_taskPlanOptions->getOptions().push_back(taskOption);
-        taskOption = nullptr; //just gave up ownership
-
-    }
-    else
-    {
-		UXAS_LOG_ERROR("ERROR::Task_WatchTask:: no watchedEntityState found for Entity[" + std::to_string(m_watchTask->getWatchedEntityID()) + "]");
-        isSuccessful = false;
-    }
-
-    return (isSuccessful);
-}
-
 std::shared_ptr<afrl::cmasi::Location3D> OverwatchTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
 {
     if (m_watchedEntityStateLast)

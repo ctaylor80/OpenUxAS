@@ -20,8 +20,14 @@
 #include "TimeUtilities.h"
 #include "visilibity.h"
 #include "UnitConversions.h"
-#include "../../UxAS-afrl_internal/src/LMCP/afrl/cmasi/GimbalStareAction.h"
-#include "../../UxAS-afrl_internal/src/LMCP/afrl/cmasi/LoiterAction.h"
+#include "afrl/cmasi/GimbalStareAction.h"
+#include "afrl/cmasi/LoiterAction.h"
+#include "afrl/vehicles/GroundVehicleState.h"
+#include "afrl/cmasi/GimbalConfiguration.h"
+#include "afrl/vehicles/GroundVehicleConfiguration.h"
+#include "afrl/vehicles/SurfaceVehicleConfiguration.h"
+#include "afrl/cmasi/AirVehicleConfiguration.h"
+#include "BatchSummaryService.h"
 
 namespace uxas
 {
@@ -47,7 +53,7 @@ namespace task
         int64_t m_straightLineThreshold_m = 400;
         double m_startPointLead_m = 50.0;        
         std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Location3D>> m_targetLocations;
-        int64_t m_throttle_ms = 5000;
+        int64_t m_throttle_ms = 3000;
 
     private :
         //methods overriden from TaskServiceBase
@@ -60,13 +66,19 @@ namespace task
         virtual bool processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) { return false; };
         virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) {};
         virtual bool configureDynamicTask(const pugi::xml_node& serviceXmlNode) { return true; };
+        virtual void buildTaskPlanOptions() override;
 
 
         //helper methods
         std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc);
-        std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc);
+        std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, std::shared_ptr<afrl::cmasi::Location3D> loc);
+        double loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> config);
+        void AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset);
+        
         std::unordered_map<int64_t, int64_t> m_throttle;
         std::unordered_map<int64_t, int64_t> m_entityIdVsLastWaypoint;
+        std::unordered_map < int64_t, std::shared_ptr<VisiLibity::Polygon > > m_KeepOutZoneIDVsPolygon;
+
     };
 }
 }

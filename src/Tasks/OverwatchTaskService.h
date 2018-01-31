@@ -163,10 +163,7 @@ private:
 
     virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
 
-    virtual void buildTaskPlanOptions() override;
 
-private:
-    bool isCalculateOption(const int64_t& taskId, int64_t& optionId, const std::vector<int64_t>& eligibleEntities);
 private:
     std::shared_ptr<afrl::impact::WatchTask> m_watchTask;
     std::shared_ptr<afrl::cmasi::EntityState> m_watchedEntityStateLast;

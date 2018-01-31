@@ -185,12 +185,10 @@ private:
     bool
     processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
 
-    virtual void buildTaskPlanOptions() override;
     virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
 
 
 private:
-    bool isCalculateOption(const int64_t& taskId, int64_t& optionId);
     void moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi::Location3D>& supportedEntityStateLocation);
 private:
     std::shared_ptr<afrl::impact::CommRelayTask> m_CommRelayTask;
