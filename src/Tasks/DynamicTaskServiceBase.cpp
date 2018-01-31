@@ -20,146 +20,146 @@ namespace service
 {
 namespace task
 {
-    DynamicTaskServiceBase::DynamicTaskServiceBase(const std::string& typeName, const std::string& directoryName)
-        : TaskServiceBase(typeName, directoryName)
+DynamicTaskServiceBase::DynamicTaskServiceBase(const std::string& typeName, const std::string& directoryName)
+    : TaskServiceBase(typeName, directoryName)
+{
+    m_isMakeTransitionWaypointsActive = true;
+}
+
+
+bool DynamicTaskServiceBase::configureTask(const pugi::xml_node& serviceXmlNode)
+{
+    addSubscriptionAddress(messages::route::RoutePlanResponse::Subscription);
+
+    for (auto koz : m_keepOutZones)
     {
-        m_isMakeTransitionWaypointsActive = true;
+        auto poly = BatchSummaryService::FromAbstractGeometry(koz.second->getBoundary());
+        m_KeepOutZoneIDVsPolygon[koz.second->getZoneID()] = poly;
     }
 
+    configureDynamicTask(serviceXmlNode);
+    return true;
+}
 
-    bool DynamicTaskServiceBase::configureTask(const pugi::xml_node& serviceXmlNode)
+void DynamicTaskServiceBase::buildTaskPlanOptions()
+{
+    int64_t optionId(1);
+    int64_t taskId(m_task->getTaskID());
+
+    for (auto itEligibleEntities = m_speedAltitudeVsEligibleEntityIdsRequested.begin(); itEligibleEntities != m_speedAltitudeVsEligibleEntityIdsRequested.end(); itEligibleEntities++)
     {
-        addSubscriptionAddress(messages::route::RoutePlanResponse::Subscription);
-
-        for (auto koz : m_keepOutZones)
+        for (auto entity : itEligibleEntities->second)
         {
-            auto poly = BatchSummaryService::FromAbstractGeometry(koz.second->getBoundary());
-            m_KeepOutZoneIDVsPolygon[koz.second->getZoneID()] = poly;
-        }
-
-        configureDynamicTask(serviceXmlNode);
-        return true;
-    }
-
-    void DynamicTaskServiceBase::buildTaskPlanOptions()
-    {
-        int64_t optionId(1);
-        int64_t taskId(m_task->getTaskID());
-
-        for (auto itEligibleEntities = m_speedAltitudeVsEligibleEntityIdsRequested.begin(); itEligibleEntities != m_speedAltitudeVsEligibleEntityIdsRequested.end(); itEligibleEntities++)
-        {
-            for (auto entity : itEligibleEntities->second)
+            if (m_entityStates.find(entity) == m_entityStates.end() ||
+                m_entityConfigurations.find(entity) == m_entityConfigurations.end())
             {
-                if (m_entityStates.find(entity) == m_entityStates.end() ||
-                    m_entityConfigurations.find(entity) == m_entityConfigurations.end())
-                {
-                    continue;
-                }
-                auto state = m_entityStates[entity];
-                auto config = m_entityConfigurations[entity];
-                auto targetLocation = calculateTargetLocation(state);
-                if (afrl::cmasi::isAirVehicleConfiguration(config.get()))
-                {
-                    auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
-                    auto radius = loiterRadiusFromConfig(airVehicleConfig);
-                    AttemptMoveOutsideKoz(targetLocation, radius * 1.5);
-                }
-                auto taskOption = new uxas::messages::task::TaskOption;
-                taskOption->setTaskID(taskId);
-                taskOption->setOptionID(optionId);
-                taskOption->getEligibleEntities() = m_task->getEligibleEntities();
-                taskOption->setStartLocation(targetLocation->clone());
-                taskOption->setEndLocation(targetLocation->clone());
-                auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
-                m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
-                m_taskPlanOptions->getOptions().push_back(taskOption);
-
-                optionId++;
+                continue;
             }
-        }
-
-        std::string compositionString("+(");
-        for (auto itOption = m_taskPlanOptions->getOptions().begin(); itOption != m_taskPlanOptions->getOptions().end(); itOption++)
-        {
-            compositionString += "p";
-            compositionString += std::to_string((*itOption)->getOptionID());
-            compositionString += " ";
-        }
-        compositionString += ")";
-
-        m_taskPlanOptions->setComposition(compositionString);
-
-        // send out the options
-        auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
-        sendSharedLmcpObjectBroadcastMessage(newResponse);
-    }
-
-    bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
-    {
-        if (messages::route::isRoutePlanResponse(receivedLmcpObject))
-        {
-            auto response = std::dynamic_pointer_cast<messages::route::RoutePlanResponse>(receivedLmcpObject);
-            if (response->getResponseID() == m_serviceId &&
-                !response->getRouteResponses().empty() &&
-                response->getRouteResponses().front()->getRouteID() == TaskOptionClass::m_routeIdFromLastTask &&
-                !response->getRouteResponses().front()->getWaypoints().empty())
+            auto state = m_entityStates[entity];
+            auto config = m_entityConfigurations[entity];
+            auto targetLocation = calculateTargetLocation(state);
+            if (afrl::cmasi::isAirVehicleConfiguration(config.get()))
             {
-                auto newRoute = response->getRouteResponses().front()->getWaypoints();
-
-                auto mish = std::make_shared<afrl::cmasi::MissionCommand>();
-                for (auto wp : newRoute)
-                {
-                    wp->getAssociatedTasks().push_back(m_task->getTaskID());
-                    mish->getWaypointList().push_back(wp->clone());
-                }
-                auto back = mish->getWaypointList().back();
-                back->setNextWaypoint(back->getNumber());
-
-                m_entityIdVsLastWaypoint[response->getVehicleID()] = back->getNumber();
-
-                mish->setVehicleID(response->getVehicleID());
-                mish->setFirstWaypoint(mish->getWaypointList().front()->getNumber());
-
-                //add gimbal and loiter commands
-                if (m_entityConfigurations.find(mish->getVehicleID()) != m_entityConfigurations.end() && 
-                    m_targetLocations.find(mish->getVehicleID()) != m_targetLocations.end())
-                {
-                    auto firstWaypoint = mish->getWaypointList().front();
-                    auto lastWaypont = mish->getWaypointList().back();
-
-                    auto config = std::shared_ptr<afrl::cmasi::EntityConfiguration>(m_entityConfigurations[mish->getVehicleID()]);
-                    auto loc = std::shared_ptr<afrl::cmasi::Location3D>(m_targetLocations[mish->getVehicleID()]);
-
-                    auto gimbalActions = calculateGimbalStareAction(config, loc);
-                    auto loiterActions = calculateLoiterAction(config, loc);
-
-                    for (auto gimbalAction : gimbalActions->getVehicleActionList())
-                    {
-                        firstWaypoint->getVehicleActionList().push_back(gimbalAction->clone());
-                    }
-                    for (auto loiterAction : loiterActions->getVehicleActionList())
-                    {
-                        lastWaypont->getVehicleActionList().push_back(loiterAction->clone());
-                    }
-                }
-
-
-                processMissionCommand(mish);
-
-                sendSharedLmcpObjectBroadcastMessage(mish);
-
+                auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
+                auto radius = loiterRadiusFromConfig(airVehicleConfig);
+                AttemptMoveOutsideKoz(targetLocation, radius * 1.5);
             }
-        }
-        else
-        {
-            processRecievedLmcpMessageDynamicTask(receivedLmcpObject);
-        }
+            auto taskOption = new uxas::messages::task::TaskOption;
+            taskOption->setTaskID(taskId);
+            taskOption->setOptionID(optionId);
+            taskOption->getEligibleEntities() = m_task->getEligibleEntities();
+            taskOption->setStartLocation(targetLocation->clone());
+            taskOption->setEndLocation(targetLocation->clone());
+            auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
+            m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
+            m_taskPlanOptions->getOptions().push_back(taskOption);
 
-
-        return false;
+            optionId++;
+        }
     }
 
-    void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState)
+    std::string compositionString("+(");
+    for (auto itOption = m_taskPlanOptions->getOptions().begin(); itOption != m_taskPlanOptions->getOptions().end(); itOption++)
+    {
+        compositionString += "p";
+        compositionString += std::to_string((*itOption)->getOptionID());
+        compositionString += " ";
+    }
+    compositionString += ")";
+
+    m_taskPlanOptions->setComposition(compositionString);
+
+    // send out the options
+    auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
+    sendSharedLmcpObjectBroadcastMessage(newResponse);
+}
+
+bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
+{
+    if (messages::route::isRoutePlanResponse(receivedLmcpObject))
+    {
+        auto response = std::dynamic_pointer_cast<messages::route::RoutePlanResponse>(receivedLmcpObject);
+        if (response->getResponseID() == m_serviceId &&
+            !response->getRouteResponses().empty() &&
+            response->getRouteResponses().front()->getRouteID() == TaskOptionClass::m_routeIdFromLastTask &&
+            !response->getRouteResponses().front()->getWaypoints().empty())
+        {
+            auto newRoute = response->getRouteResponses().front()->getWaypoints();
+
+            auto mish = std::make_shared<afrl::cmasi::MissionCommand>();
+            for (auto wp : newRoute)
+            {
+                wp->getAssociatedTasks().push_back(m_task->getTaskID());
+                mish->getWaypointList().push_back(wp->clone());
+            }
+            auto back = mish->getWaypointList().back();
+            back->setNextWaypoint(back->getNumber());
+
+            m_entityIdVsLastWaypoint[response->getVehicleID()] = back->getNumber();
+
+            mish->setVehicleID(response->getVehicleID());
+            mish->setFirstWaypoint(mish->getWaypointList().front()->getNumber());
+
+            //add gimbal and loiter commands
+            if (m_entityConfigurations.find(mish->getVehicleID()) != m_entityConfigurations.end() && 
+                m_targetLocations.find(mish->getVehicleID()) != m_targetLocations.end())
+            {
+                auto firstWaypoint = mish->getWaypointList().front();
+                auto lastWaypont = mish->getWaypointList().back();
+
+                auto config = std::shared_ptr<afrl::cmasi::EntityConfiguration>(m_entityConfigurations[mish->getVehicleID()]);
+                auto loc = std::shared_ptr<afrl::cmasi::Location3D>(m_targetLocations[mish->getVehicleID()]);
+
+                auto gimbalActions = calculateGimbalStareAction(config, loc);
+                auto loiterActions = calculateLoiterAction(config, loc);
+
+                for (auto gimbalAction : gimbalActions->getVehicleActionList())
+                {
+                    firstWaypoint->getVehicleActionList().push_back(gimbalAction->clone());
+                }
+                for (auto loiterAction : loiterActions->getVehicleActionList())
+                {
+                    lastWaypont->getVehicleActionList().push_back(loiterAction->clone());
+                }
+            }
+
+
+            processMissionCommand(mish);
+
+            sendSharedLmcpObjectBroadcastMessage(mish);
+
+        }
+    }
+    else
+    {
+        processRecievedLmcpMessageDynamicTask(receivedLmcpObject);
+    }
+
+
+    return false;
+}
+
+void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState)
     {
         if (m_throttle.find(entityState->getID()) == m_throttle.end())
         {
@@ -257,7 +257,7 @@ namespace task
         sendSharedLmcpObjectBroadcastMessage(request);
     }
 
-    std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc)
+std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc)
     {
         auto vehicleActionCommand = std::make_shared<afrl::cmasi::VehicleActionCommand>();
 
@@ -275,41 +275,41 @@ namespace task
         }
         return vehicleActionCommand;
     }
-    std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, std::shared_ptr<afrl::cmasi::Location3D> loc)
+std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, std::shared_ptr<afrl::cmasi::Location3D> loc)
+{
+    auto vehicleActionCommand = std::make_shared<afrl::cmasi::VehicleActionCommand>();
+
+    double surveyRadius = 0.0;
+    double surveySpeed = config->getNominalSpeed();
+    auto surveyType = afrl::cmasi::LoiterType::Circular;
+
+    // calculate proper radius
+    if (afrl::vehicles::isGroundVehicleConfiguration(config.get()) ||
+        afrl::vehicles::isSurfaceVehicleConfiguration(config.get()))
     {
-        auto vehicleActionCommand = std::make_shared<afrl::cmasi::VehicleActionCommand>();
-
-        double surveyRadius = 0.0;
-        double surveySpeed = config->getNominalSpeed();
-        auto surveyType = afrl::cmasi::LoiterType::Circular;
-
-        // calculate proper radius
-        if (afrl::vehicles::isGroundVehicleConfiguration(config.get()) ||
-            afrl::vehicles::isSurfaceVehicleConfiguration(config.get()))
-        {
-            surveyRadius = 0.0;
-            surveyType = afrl::cmasi::LoiterType::Hover;
-        }
-        else if (afrl::cmasi::isAirVehicleConfiguration(config.get()))
-        {
-            auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
-            surveyRadius = loiterRadiusFromConfig(airVehicleConfig);
-            AttemptMoveOutsideKoz(loc, surveyRadius * 1.5);
-        }
-        afrl::cmasi::LoiterAction* surveyAction = new afrl::cmasi::LoiterAction;
-        surveyAction->setLocation(loc->clone());
-        surveyAction->getLocation()->setAltitude(config->getNominalAltitude());
-        surveyAction->setAirspeed(surveySpeed);
-        surveyAction->setRadius(surveyRadius);
-        surveyAction->setDirection(afrl::cmasi::LoiterDirection::CounterClockwise);
-        surveyAction->setDuration(-1);
-        surveyAction->setLoiterType(surveyType);
-        surveyAction->getAssociatedTaskList().push_back(m_task->getTaskID());
-        vehicleActionCommand->getVehicleActionList().push_back(surveyAction);
-        return vehicleActionCommand;
+        surveyRadius = 0.0;
+        surveyType = afrl::cmasi::LoiterType::Hover;
     }
+    else if (afrl::cmasi::isAirVehicleConfiguration(config.get()))
+    {
+        auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
+        surveyRadius = loiterRadiusFromConfig(airVehicleConfig);
+        AttemptMoveOutsideKoz(loc, surveyRadius * 1.5);
+    }
+    afrl::cmasi::LoiterAction* surveyAction = new afrl::cmasi::LoiterAction;
+    surveyAction->setLocation(loc->clone());
+    surveyAction->getLocation()->setAltitude(config->getNominalAltitude());
+    surveyAction->setAirspeed(surveySpeed);
+    surveyAction->setRadius(surveyRadius);
+    surveyAction->setDirection(afrl::cmasi::LoiterDirection::CounterClockwise);
+    surveyAction->setDuration(-1);
+    surveyAction->setLoiterType(surveyType);
+    surveyAction->getAssociatedTaskList().push_back(m_task->getTaskID());
+    vehicleActionCommand->getVehicleActionList().push_back(surveyAction);
+    return vehicleActionCommand;
+}
 
-    double DynamicTaskServiceBase::loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> config)
+double DynamicTaskServiceBase::loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> config)
     {
         double speed = config->getNominalSpeed();
         double bank = 25.0 * n_Const::c_Convert::dDegreesToRadians();
@@ -321,69 +321,69 @@ namespace task
         return radius;
     }
 
-    void DynamicTaskServiceBase::AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset)
+void DynamicTaskServiceBase::AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset)
+{
+    uxas::common::utilities::CUnitConversions unitConversions;
+    VisiLibity::Point newEnd;
+    bool newEndSet = false;
+    for (auto koz : m_KeepOutZoneIDVsPolygon)
     {
-        uxas::common::utilities::CUnitConversions unitConversions;
-        VisiLibity::Point newEnd;
-        bool newEndSet = false;
-        for (auto koz : m_KeepOutZoneIDVsPolygon)
+        VisiLibity::Point p;
+        double north, east;
+        unitConversions.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
+        p.set_x(east);
+        p.set_y(north);
+
+
+
+        //check for point inside koz case
+        if (p.in(*koz.second))
         {
-            VisiLibity::Point p;
-            double north, east;
-            unitConversions.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
-            p.set_x(east);
-            p.set_y(north);
+            //move the location outside the koz
+            auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
+            auto vector = VisiLibity::Point::normalize(bounderyPoint - p) * offset;
+            newEnd = bounderyPoint + vector;
+            newEndSet = true;
 
-
-
-            //check for point inside koz case
-            if (p.in(*koz.second))
-            {
-                //move the location outside the koz
-                auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
-                auto vector = VisiLibity::Point::normalize(bounderyPoint - p) * offset;
-                newEnd = bounderyPoint + vector;
-                newEndSet = true;
-
-                break;
-            }
-            afrl::cmasi::Polygon *poly = new afrl::cmasi::Polygon();
-            auto length = offset;
-            for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
-            {
-                double lat_deg, lon_deg;
-
-                unitConversions.ConvertNorthEast_mToLatLong_deg(north + length * sin(rad), east + length * cos(rad), lat_deg, lon_deg);
-                auto loc = new afrl::cmasi::Location3D();
-                loc->setLatitude(lat_deg);
-                loc->setLongitude(lon_deg);
-                poly->getBoundaryPoints().push_back(loc);
-            }
-            auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
-
-            //check if loiter intersects the perimiter of the koz case
-            if (loiterArea->n() > 0 && koz.second->n() > 0 &&
-                boundary_distance(*loiterArea, *koz.second) < .1)
-            {
-                //move the location outside the koz
-                auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
-                //the loiter center point is outside of the koz because of the checks above
-                auto vector = VisiLibity::Point::normalize(p - bounderyPoint) * offset;
-                newEnd = bounderyPoint + vector;
-                newEndSet = true;
-
-                break;
-            }
+            break;
         }
-        if (newEndSet)
+        afrl::cmasi::Polygon *poly = new afrl::cmasi::Polygon();
+        auto length = offset;
+        for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
         {
-            double latitude_deg(0.0);
-            double longitude_deg(0.0);
-            unitConversions.ConvertNorthEast_mToLatLong_deg(newEnd.y(), newEnd.x(), latitude_deg, longitude_deg);
-            loc->setLatitude(latitude_deg);
-            loc->setLongitude(longitude_deg);
+            double lat_deg, lon_deg;
+
+            unitConversions.ConvertNorthEast_mToLatLong_deg(north + length * sin(rad), east + length * cos(rad), lat_deg, lon_deg);
+            auto loc = new afrl::cmasi::Location3D();
+            loc->setLatitude(lat_deg);
+            loc->setLongitude(lon_deg);
+            poly->getBoundaryPoints().push_back(loc);
+        }
+        auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
+
+        //check if loiter intersects the perimiter of the koz case
+        if (loiterArea->n() > 0 && koz.second->n() > 0 &&
+            boundary_distance(*loiterArea, *koz.second) < .1)
+        {
+            //move the location outside the koz
+            auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
+            //the loiter center point is outside of the koz because of the checks above
+            auto vector = VisiLibity::Point::normalize(p - bounderyPoint) * offset;
+            newEnd = bounderyPoint + vector;
+            newEndSet = true;
+
+            break;
         }
     }
+    if (newEndSet)
+    {
+        double latitude_deg(0.0);
+        double longitude_deg(0.0);
+        unitConversions.ConvertNorthEast_mToLatLong_deg(newEnd.y(), newEnd.x(), latitude_deg, longitude_deg);
+        loc->setLatitude(latitude_deg);
+        loc->setLongitude(longitude_deg);
+    }
+}
 }
 }
 }
