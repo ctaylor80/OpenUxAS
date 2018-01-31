@@ -249,18 +249,11 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
             //COUT_INFO_MSG("INFO:: TaskId[" << taskId << "] xmlTaskOptions[" << xmlTaskOptions << "]")
         }
 
-        std::string xmlKeepOutZones = "<KeepOutZones>";
-        for (auto koz : m_idVsKeepOutZone)
-        {
-            xmlKeepOutZones += koz.second->toXML();
-        }
-        xmlKeepOutZones += "</KeepOutZones>";
-
         auto createNewServiceMessage = std::make_shared<uxas::messages::uxnative::CreateNewService>();
         auto serviceId = ServiceBase::getUniqueServceId();
         createNewServiceMessage->setServiceID(serviceId);
         createNewServiceMessage->setXmlConfiguration("<Service Type=\"" + baseTask->getFullLmcpTypeName() + "\">" +
-                " <TaskRequest>" + baseTask->toXML() + "</TaskRequest>\n" + xmlTaskOptions + xmlKeepOutZones);
+                " <TaskRequest>" + baseTask->toXML() + "</TaskRequest>\n" + xmlTaskOptions);
 
         // add all existing entities for new service initialization
         for (auto& entityConfiguration : m_idVsEntityConfiguration)

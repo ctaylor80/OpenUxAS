@@ -97,26 +97,10 @@ ImpactPointSearchTaskService::configureTask(const pugi::xml_node& ndComponent)
 			    isSuccessful = false;
 			}
 
-            pugi::xml_node keepOutZones = ndComponent.child("KeepOutZones");
-            if (keepOutZones)
+            for (auto koz : m_keepOutZones)
             {
-                for (pugi::xml_node ndCurrent = keepOutZones.first_child(); ndCurrent; ndCurrent = ndCurrent.next_sibling())
-                {
-                    std::stringstream stringStream;
-                    ndCurrent.print(stringStream);
-                    avtas::lmcp::Object* object = avtas::lmcp::xml::readXML(stringStream.str());
-                    if (object == nullptr)
-                        continue;
-
-                    if (afrl::cmasi::isKeepOutZone(object))
-                    {
-                        std::shared_ptr<afrl::cmasi::KeepOutZone> koz;
-                        koz.reset(static_cast<afrl::cmasi::KeepOutZone*>(object->clone()));
-                        auto poly = BatchSummaryService::FromAbstractGeometry(koz->getBoundary());
-                        m_idVKeepOutZone[koz->getZoneID()] = poly;
-                    }
-                }
-
+                auto poly = BatchSummaryService::FromAbstractGeometry(koz.second->getBoundary());
+                m_KeepOutZoneIDVsPolygon[koz.second->getZoneID()] = poly;
             }
         }
         else
@@ -234,7 +218,7 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
     taskOption->setEndHeading(startEndHeading_deg);
     VisiLibity::Point newEnd;
     bool newEndSet = false;
-    for (auto koz : m_idVKeepOutZone)
+    for (auto koz : m_KeepOutZoneIDVsPolygon)
     {
         VisiLibity::Point p;
         double north, east;
