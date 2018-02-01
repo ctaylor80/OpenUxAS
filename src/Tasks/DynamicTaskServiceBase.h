@@ -27,6 +27,7 @@
 #include "afrl/vehicles/GroundVehicleConfiguration.h"
 #include "afrl/vehicles/SurfaceVehicleConfiguration.h"
 #include "afrl/cmasi/AirVehicleConfiguration.h"
+#include "afrl/cmasi/OperatingRegion.h"
 #include "BatchSummaryService.h"
 
 namespace uxas
@@ -73,12 +74,11 @@ private :
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc);
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, std::shared_ptr<afrl::cmasi::Location3D> loc);
     double loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> config);
-    void AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset);
+    void AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, int64_t operatingRegion);
     
     std::unordered_map<int64_t, int64_t> m_throttle;
     std::unordered_map<int64_t, int64_t> m_entityIdVsLastWaypoint;
     std::unordered_map < int64_t, std::shared_ptr<VisiLibity::Polygon > > m_KeepOutZoneIDVsPolygon;
-
 };
 }
 }
