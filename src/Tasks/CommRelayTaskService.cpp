@@ -157,7 +157,15 @@ void CommRelayTaskService::buildTaskPlanOptions()
     int64_t optionId(1);
     int64_t taskId(m_CommRelayTask->getTaskID());
 
-    if (isCalculateOption(taskId, optionId))
+    std::vector<int64_t> eligibleEntities;
+    for (auto itEligibleEntity : m_speedAltitudeVsEligibleEntityIdsRequested)
+    {
+        for (auto entityID : itEligibleEntity.second)
+        {
+            eligibleEntities.push_back(entityID);
+        }
+    }
+    if (isCalculateOption(taskId, optionId, eligibleEntities))
     {
         optionId++;
     }
@@ -246,7 +254,7 @@ void CommRelayTaskService::moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi:
         supportedEntityStateLocation->setLongitude(lon);
 }
 
-bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & optionId)
+bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & optionId, const std::vector<int64_t>& eligibleEntities)
 {
     bool isSuccessful{true};
 
@@ -255,8 +263,10 @@ bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & op
         auto taskOption = new uxas::messages::task::TaskOption;
         taskOption->setTaskID(taskId);
         taskOption->setOptionID(optionId);
-        taskOption->getEligibleEntities() = m_CommRelayTask->getEligibleEntities();
-        auto halfWayPoint = std::shared_ptr<afrl::cmasi::Location3D>(m_supportedEntityStateLast->clone());
+        for (auto eligibleEntity : eligibleEntities)
+        {
+            taskOption->getEligibleEntities().push_back(eligibleEntity);
+        }        auto halfWayPoint = std::shared_ptr<afrl::cmasi::Location3D>(m_supportedEntityStateLast->clone());
         moveToHalfWayPoint(halfWayPoint);
         taskOption->setStartLocation(halfWayPoint->clone());
         //taskOption->setStartHeading(m_supportedEntityStateLast->getHeading());

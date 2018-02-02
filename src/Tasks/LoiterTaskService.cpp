@@ -82,7 +82,9 @@ void LoiterTaskService::buildTaskPlanOptions() {
     auto taskOption = new uxas::messages::task::TaskOption;
     taskOption->setTaskID(m_loiterTask->getTaskID());
     taskOption->setOptionID(optionId);
-    taskOption->getEligibleEntities() = m_loiterTask->getEligibleEntities();
+    for (auto itEligibleEntities : m_speedAltitudeVsEligibleEntityIdsRequested)
+        for (auto id : itEligibleEntities.second)
+            taskOption->getEligibleEntities().push_back(id);
     taskOption->setStartLocation(m_loiterTask->getDesiredAction()->getLocation()->clone());
     //taskOption->setStartHeading(m_watchedEntityStateLast->getHeading());
     taskOption->setEndLocation(m_loiterTask->getDesiredAction()->getLocation()->clone());

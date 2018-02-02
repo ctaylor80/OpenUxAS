@@ -162,7 +162,15 @@ void EscortTaskService::buildTaskPlanOptions()
     int64_t optionId(1);
     int64_t taskId(m_escortTask->getTaskID());
 
-    if (isCalculateOption(taskId, optionId, m_escortTask->getEligibleEntities()))
+    std::vector<int64_t> eligibleEntities;
+    for (auto itEligibleEntity : m_speedAltitudeVsEligibleEntityIdsRequested)
+    {
+        for (auto entityID : itEligibleEntity.second)
+        {
+            eligibleEntities.push_back(entityID);
+        }
+    }
+    if (isCalculateOption(taskId, optionId, eligibleEntities))
     {
         optionId++;
     }
@@ -208,7 +216,10 @@ bool EscortTaskService::isCalculateOption(const int64_t& taskId, int64_t& option
             auto taskOption = new uxas::messages::task::TaskOption;
             taskOption->setTaskID(taskId);
             taskOption->setOptionID(optionId);
-            taskOption->getEligibleEntities() = eligibleEntities;
+            for (auto eligibleEntity : eligibleEntities)
+            {
+                taskOption->getEligibleEntities().push_back(eligibleEntity);
+            }
             taskOption->setStartLocation(targetLocation->clone());
             taskOption->setStartHeading(targetHeading);
             taskOption->setEndLocation(targetLocation->clone());

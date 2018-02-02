@@ -245,7 +245,7 @@ bool AssignmentTreeBranchBoundBase::AssigmentPrerequisites::isAssignmentReady(co
                     {
                         if (option->getEligibleEntities().empty())
                         {
-                            //UXAS_LOG_WARN(s_typeName(), "isAssignmentReady:: TaskId[", *itTaskId, "], Option[", option->getOptionID() , "] has no eligible entities");
+                            UXAS_LOG_WARN(s_typeName(), "isAssignmentReady:: TaskId[", *itTaskId, "], Option[", option->getOptionID() , "] has no eligible entities");
                         }
                         /*else
                         {

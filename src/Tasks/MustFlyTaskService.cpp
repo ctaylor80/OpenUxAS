@@ -100,7 +100,9 @@ void MustFlyTaskService::buildTaskPlanOptions()
 
         taskOption->setTaskID(m_mustFlyTask->getTaskID());
         taskOption->setOptionID(optionId);
-        taskOption->getEligibleEntities() = m_mustFlyTask->getEligibleEntities();
+        for (auto itEligibleEntities : m_speedAltitudeVsEligibleEntityIdsRequested)
+            for (auto id : itEligibleEntities.second)
+                taskOption->getEligibleEntities().push_back(id);
         taskOption->setStartLocation(m_mustFlyTask->getPosition()->clone());
         taskOption->setEndLocation(m_mustFlyTask->getPosition()->clone());
         auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());

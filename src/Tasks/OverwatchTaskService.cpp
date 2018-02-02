@@ -113,8 +113,15 @@ void OverwatchTaskService::buildTaskPlanOptions()
 
     int64_t optionId(1);
     int64_t taskId(m_watchTask->getTaskID());
-
-    if (isCalculateOption(taskId, optionId, m_watchTask->getEligibleEntities()))
+    std::vector<int64_t> eligibleEntities;
+    for (auto itEligibleEntity : m_speedAltitudeVsEligibleEntityIdsRequested)
+    {
+        for (auto entityID : itEligibleEntity.second)
+        {
+            eligibleEntities.push_back(entityID);
+        }
+    }
+    if (isCalculateOption(taskId, optionId, eligibleEntities))
     {
         optionId++;
     }
@@ -146,6 +153,10 @@ bool OverwatchTaskService::isCalculateOption(const int64_t& taskId, int64_t& opt
         auto taskOption = new uxas::messages::task::TaskOption;
         taskOption->setTaskID(taskId);
         taskOption->setOptionID(optionId);
+        for (auto eligibleEntity : eligibleEntities)
+        {
+            taskOption->getEligibleEntities().push_back(eligibleEntity);
+        }
         taskOption->getEligibleEntities() = eligibleEntities;
         taskOption->setStartLocation(m_watchedEntityStateLast->getLocation()->clone());
         taskOption->setStartHeading(m_watchedEntityStateLast->getHeading());

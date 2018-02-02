@@ -190,7 +190,7 @@ private:
 
 
 private:
-    bool isCalculateOption(const int64_t& taskId, int64_t& optionId);
+    bool isCalculateOption(const int64_t& taskId, int64_t& optionId, const std::vector<int64_t>& eligibleEntities);
     void moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi::Location3D>& supportedEntityStateLocation);
 private:
     std::shared_ptr<afrl::impact::CommRelayTask> m_CommRelayTask;

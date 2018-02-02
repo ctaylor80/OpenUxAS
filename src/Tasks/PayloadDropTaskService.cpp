@@ -117,7 +117,7 @@ void PayloadDropTaskService::buildTaskPlanOptions()
         for (auto entityId : itEligibleEntities.second)
         {
             auto taskOption = new uxas::messages::task::TaskOption;
-
+            taskOption->getEligibleEntities().push_back(entityId);
             taskOption->setTaskID(m_payloadDrop->getTaskID());
             taskOption->setOptionID(optionId);
 
