@@ -69,7 +69,7 @@ void DynamicTaskServiceBase::buildTaskPlanOptions()
             auto taskOption = new uxas::messages::task::TaskOption;
             taskOption->setTaskID(taskId);
             taskOption->setOptionID(optionId);
-            taskOption->getEligibleEntities() = m_task->getEligibleEntities();
+            taskOption->getEligibleEntities().push_back(entity);
             taskOption->setStartLocation(targetLocation->clone());
             taskOption->setEndLocation(targetLocation->clone());
             auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
