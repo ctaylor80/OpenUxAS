@@ -190,7 +190,7 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
             auto message = std::static_pointer_cast<avtas::lmcp::Object>(killServiceMessage);
             sendSharedLmcpObjectBroadcastMessage(message);
             m_TaskIdVsServiceId.erase(itServiceId);
-            //COUT_INFO_MSG("Removed Task[" << taskId << "]")
+            UXAS_LOG_WARN("taskID ", taskId, " already exists. Killing previous task");
         }
         //COUT_INFO_MSG("Adding Task[" << taskId << "]")
 
