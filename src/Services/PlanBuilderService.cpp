@@ -29,8 +29,12 @@
 
 #include <sstream>
 #include <iostream>     // std::cout, cerr, etc
+#include <afrl/cmasi/LoiterAction.h>
+#include <afrl/impact/ImpactAutomationRequest.h>
 
 #define STRING_XML_ASSIGNMENT_START_POINT_LEAD_M "AssignmentStartPointLead_m"
+#define STRING_XML_ADD_LOITER_TO_END_OF_MISSION "AddLoiterToEndOfMission"
+#define STRING_XML_DEFAULT_LOITER_RADIUS_M "DefaultLoiterRadius_m"
 
 namespace uxas
 {
@@ -52,11 +56,20 @@ PlanBuilderService::configure(const pugi::xml_node& ndComponent)
     {
         m_assignmentStartPointLead_m = ndComponent.attribute(STRING_XML_ASSIGNMENT_START_POINT_LEAD_M).as_double();
     }
+    if (!ndComponent.attribute(STRING_XML_ADD_LOITER_TO_END_OF_MISSION).empty())
+    {
+        m_addLoiterToEndOfMission = ndComponent.attribute(STRING_XML_ADD_LOITER_TO_END_OF_MISSION).as_bool();
+    }
+    if (!ndComponent.attribute(STRING_XML_DEFAULT_LOITER_RADIUS_M).empty())
+    {
+        m_deafultLoiterRadius = ndComponent.attribute(STRING_XML_DEFAULT_LOITER_RADIUS_M).as_double();
+    }
 
     addSubscriptionAddress(uxas::messages::task::UniqueAutomationRequest::Subscription);
     addSubscriptionAddress(uxas::messages::task::TaskAssignmentSummary::Subscription);
     addSubscriptionAddress(uxas::messages::task::TaskImplementationResponse::Subscription);
-    
+    addSubscriptionAddress(afrl::impact::ImpactAutomationRequest::Subscription);
+
     // ENTITY STATES
     addSubscriptionAddress(afrl::cmasi::EntityState::Subscription);
     std::vector< std::string > childstates = afrl::cmasi::EntityStateDescendants();
@@ -72,6 +85,15 @@ PlanBuilderService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
     if(entityState)
     {
         m_currentEntityStates[entityState->getID()] = entityState;
+    }
+    else if (afrl::impact::isImpactAutomationRequest(receivedLmcpMessage->m_object))
+    {
+        auto impactAutomationResponse = std::static_pointer_cast<afrl::impact::ImpactAutomationRequest>(receivedLmcpMessage->m_object);
+
+        for (auto override : impactAutomationResponse->getOverridePlanningConditions())
+        {
+            m_reqeustIDVsOverrides[impactAutomationResponse->getRequestID()].push_back(std::shared_ptr<afrl::impact::SpeedAltPair>(override->clone()));
+        }
     }
     else if(uxas::messages::task::isTaskAssignmentSummary(receivedLmcpMessage->m_object))
     {
@@ -306,12 +328,34 @@ void PlanBuilderService::processTaskImplementationResponse(const std::shared_ptr
     }
     else
     {
+        //check overrides
+        for (auto requestID : m_reqeustIDVsOverrides)
+        {
+            if (requestID.first != taskImplementationResponse->getCorrespondingAutomationRequestID())
+            {
+                continue;
+            }
+            for (auto speedAltPair : requestID.second)
+            {
+                if (speedAltPair->getVehicleID() == taskImplementationResponse->getVehicleID())
+                {
+                    for (auto wp : taskImplementationResponse->getTaskWaypoints())
+                    {
+                        wp->setAltitude(speedAltPair->getAltitude());
+                        wp->setSpeed(speedAltPair->getSpeed());
+                        wp->setAltitudeType(speedAltPair->getAltitudeType());
+                    }
+                }
+            }
+        }
+
         auto mish = new afrl::cmasi::MissionCommand;
         mish->setCommandID(m_commandId++);
         mish->setVehicleID(taskImplementationResponse->getVehicleID());
         mish->setFirstWaypoint(taskImplementationResponse->getTaskWaypoints().front()->getNumber());
         for(auto wp : taskImplementationResponse->getTaskWaypoints())
             mish->getWaypointList().push_back(wp->clone());
+
         //set default camera view
         auto state = m_currentEntityStates.find(taskImplementationResponse->getVehicleID());
         if (state != m_currentEntityStates.end())
@@ -366,9 +410,18 @@ void PlanBuilderService::checkNextTaskImplementationRequest(int64_t uniqueReques
                     if(e && e->state)
                         m_inProgressResponse[uniqueRequestID]->getFinalStates().push_back(e->state->clone());
             }
-            sendSharedLmcpObjectBroadcastMessage(m_inProgressResponse[uniqueRequestID]);
+
+            auto response = m_inProgressResponse[uniqueRequestID];
+
+            if (m_addLoiterToEndOfMission)
+            {
+                AddLoitersToMissionCommands(response);
+            }
+
+            sendSharedLmcpObjectBroadcastMessage(response);
             m_inProgressResponse.erase(uniqueRequestID);
-            
+            m_reqeustIDVsOverrides.erase(uniqueRequestID);
+
             auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
             serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Information);
             auto keyValuePair = new afrl::cmasi::KeyValuePair;
@@ -382,6 +435,61 @@ void PlanBuilderService::checkNextTaskImplementationRequest(int64_t uniqueReques
             sendNextTaskImplementationRequest(uniqueRequestID);
         }
     }
+}
+
+void PlanBuilderService::AddLoitersToMissionCommands(std::shared_ptr<uxas::messages::task::UniqueAutomationResponse> response)
+{
+    //check if a loiter already exists. Some tasks add them.
+    bool containsLoiter = false;
+    for (auto mission : response->getOriginalResponse()->getMissionCommandList())
+    {
+        for (auto wp : mission->getWaypointList())
+        {
+            for (auto action : wp->getVehicleActionList())
+            {
+                if (afrl::cmasi::isLoiterAction(action))
+                {
+                    containsLoiter = true;
+                }
+            }
+        }
+    }
+    if (containsLoiter)
+        return;
+    
+    //make sure every mission command is for the same vehicle
+    auto targetVehicle = response->getOriginalResponse()->getMissionCommandList().front()->getVehicleID();
+    if (!std::all_of(response->getOriginalResponse()->getMissionCommandList().begin(),
+        response->getOriginalResponse()->getMissionCommandList().end(),
+        [&](afrl::cmasi::MissionCommand *mission) {return mission->getVehicleID() == targetVehicle; }))
+    {
+        IMPACT_INFORM("Automation Response contains mission commands for multiple vehicles. No loiters!!");
+        return;
+    }
+    auto state = m_currentEntityStates.find(targetVehicle);
+    if (state == m_currentEntityStates.end())
+    {
+        return;
+    }
+    
+    auto la = new afrl::cmasi::LoiterAction();
+    auto back = response->getOriginalResponse()->getMissionCommandList().back()->getWaypointList().back();
+
+    auto lmcpObject = std::shared_ptr<avtas::lmcp::Object>(state->second);
+    if (afrl::vehicles::isGroundVehicleState(lmcpObject) ||
+        afrl::vehicles::isSurfaceVehicleState(lmcpObject))
+    {
+        la->setLoiterType(afrl::cmasi::LoiterType::Hover);
+    }
+    else
+    {
+        la->setLoiterType(afrl::cmasi::LoiterType::Circular);
+        la->setRadius(m_deafultLoiterRadius);
+    }
+
+    la->setLocation(back->clone());
+    la->setAirspeed(back->getSpeed());
+    back->getVehicleActionList().push_back(la);
 }
 
 }; //namespace service
