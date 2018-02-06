@@ -235,7 +235,6 @@ void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<mes
                                 UpdateSummaryUtil(*vehicleSummary, taskStart, taskEnd + 1);
                                 UpdateSummary(*vehicleSummary, taskStart, taskEnd + 1);
                                 (*vehicleSummary)->setInitialTaskID(prevTask);
-                                (*vehicleSummary)->setDestinationTaskID(workingTask);
                             }
                         }
                     }
@@ -502,7 +501,7 @@ void BatchSummaryService::HandleBatchSummaryRequest(std::shared_ptr<afrl::impact
 
                 auto summary = std::make_shared<afrl::impact::VehicleSummary>();
                 summary->setVehicleID(vehicle);
-                summary->setDestinationTaskID(-1);
+                summary->setDestinationTaskID(task);
                 summary->setTimeOnTask(-1);
                 summary->setTimeToArrive(-1);
                 if (workingTaskSummary != m_workingResponse[responseId]->getSummaries().end())

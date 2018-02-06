@@ -215,7 +215,6 @@ void CommRelayTaskService::moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi:
         supportedEntityStateLocation->setLongitude(lon);
 }
 
-
 }; //namespace task
 }; //namespace service
 }; //namespace uxas

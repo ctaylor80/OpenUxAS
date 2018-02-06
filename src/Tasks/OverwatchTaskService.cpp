@@ -104,7 +104,6 @@ OverwatchTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avta
     return (false); // always false implies never terminating service from here
 };
 
-void OverwatchTprocessMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>);
 
 std::shared_ptr<afrl::cmasi::Location3D> OverwatchTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
 {

@@ -47,7 +47,7 @@
 #define STRING_XML_NUMBER_NODES_MAXIMUM "NumberNodesMaximum"
 #define STRING_XML_COST_FUNCTION "CostFunction"
 
-#define COUT_INFO_MSG(MESSAGE) std::cout << MESSAGE << std::endl;std::cout.flush();
+#define COUT_INFO_MSG(MESSAGE)
 #define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "<>AssignmentTreeBB:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
 #define CERR_FILE_LINE_MSG(MESSAGE) std::cerr << "<>AssignmentTreeBB:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cerr.flush();
 

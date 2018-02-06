@@ -143,7 +143,7 @@ private:
 
     bool processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
 
-    bool PayloadDropTaskService::isProcessTaskImplementationRouteResponse(std::shared_ptr<uxas::messages::task::TaskImplementationResponse>& taskImplementationResponse, std::shared_ptr<TaskOptionClass>& taskOptionClass,
+    bool isProcessTaskImplementationRouteResponse(std::shared_ptr<uxas::messages::task::TaskImplementationResponse>& taskImplementationResponse, std::shared_ptr<TaskOptionClass>& taskOptionClass,
         int64_t& waypointId, std::shared_ptr<uxas::messages::route::RoutePlan>& route) override;
 
     void activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState)override { };

@@ -38,8 +38,7 @@
  */
 #define UXAS_LOG_INFORM_FUNCTIONAL_TEST(...)
 #endif
-
-#define UXAS_INFO_LOGGING_ASSIGNMENT
+//#define UXAS_INFO_LOGGING_ASSIGNMENT
 #ifdef UXAS_INFO_LOGGING_ASSIGNMENT
 /** \brief Log information message consisting of one-many arguments.  
  * Arguments can be of type string, integer, double or an expression 
