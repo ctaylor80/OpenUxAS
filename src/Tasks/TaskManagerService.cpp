@@ -160,7 +160,10 @@ TaskManagerService::configure(const pugi::xml_node& ndComponent)
     for(auto child : childtasks)
         addSubscriptionAddress(child);
 
+    addSubscriptionAddress(afrl::cmasi::KeepInZone::Subscription);
     addSubscriptionAddress(afrl::cmasi::KeepOutZone::Subscription);
+    addSubscriptionAddress(afrl::cmasi::OperatingRegion::Subscription);
+
     return true;
 }
 
@@ -246,18 +249,11 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
             //COUT_INFO_MSG("INFO:: TaskId[" << taskId << "] xmlTaskOptions[" << xmlTaskOptions << "]")
         }
 
-        std::string xmlKeepOutZones = "<KeepOutZones>";
-        for (auto koz : m_idVsKeepOutZone)
-        {
-            xmlKeepOutZones += koz.second->toXML();
-        }
-        xmlKeepOutZones += "</KeepOutZones>";
-
         auto createNewServiceMessage = std::make_shared<uxas::messages::uxnative::CreateNewService>();
         auto serviceId = ServiceBase::getUniqueServceId();
         createNewServiceMessage->setServiceID(serviceId);
         createNewServiceMessage->setXmlConfiguration("<Service Type=\"" + baseTask->getFullLmcpTypeName() + "\">" +
-                " <TaskRequest>" + baseTask->toXML() + "</TaskRequest>\n" + xmlTaskOptions + xmlKeepOutZones);
+                " <TaskRequest>" + baseTask->toXML() + "</TaskRequest>\n" + xmlTaskOptions);
 
         // add all existing entities for new service initialization
         for (auto& entityConfiguration : m_idVsEntityConfiguration)
@@ -269,6 +265,19 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
         for (auto& entityState : m_idVsEntityState)
         {
             createNewServiceMessage->getEntityStates().push_back(entityState.second->clone());
+        }
+
+        for (auto kiz : m_idVsKeepInZone)
+        {
+          createNewServiceMessage->getKeepInZones().push_back(kiz.second->clone());
+        }
+        for (auto koz : m_idVsKeepOutZone)
+        {
+          createNewServiceMessage->getKeepOutZones().push_back(koz.second->clone());
+        }
+        for (auto or : m_idVsOperatingRegion)
+        {
+          createNewServiceMessage->getOperatingRegions().push_back(or .second->clone());
         }
 
         // add the appropriate area/line/point of interest if new task requires knowledge of it
@@ -406,10 +415,20 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
         auto mish = std::static_pointer_cast<afrl::cmasi::MissionCommand>(messageObject);
         m_vehicleIdVsCurrentMission[mish->getVehicleID()] = mish;
     }
+    else if (afrl::cmasi::isKeepInZone(messageObject.get()))
+    {
+        auto kiz = std::static_pointer_cast<afrl::cmasi::KeepInZone>(messageObject);
+        m_idVsKeepInZone[kiz->getZoneID()] = kiz;
+    }
     else if (afrl::cmasi::isKeepOutZone(messageObject.get()))
     {
         auto koz = std::static_pointer_cast<afrl::cmasi::KeepOutZone>(messageObject);
         m_idVsKeepOutZone[koz->getZoneID()] = koz;
+    }
+    else if (afrl::cmasi::isOperatingRegion(messageObject.get()))
+    {
+        auto or = std::static_pointer_cast<afrl::cmasi::OperatingRegion>(messageObject);
+        m_idVsOperatingRegion[or ->getID()] = or ;
     }
     else if (afrl::cmasi::isFollowPathCommand(messageObject.get()))
     {

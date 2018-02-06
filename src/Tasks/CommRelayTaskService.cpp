@@ -150,45 +150,6 @@ CommRelayTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avta
     return (false); // always false implies never terminating service from here
 };
 
-void CommRelayTaskService::buildTaskPlanOptions()
-{
-    bool isSuccessful{true};
-
-    int64_t optionId(1);
-    int64_t taskId(m_CommRelayTask->getTaskID());
-
-    std::vector<int64_t> eligibleEntities;
-    for (auto itEligibleEntity : m_speedAltitudeVsEligibleEntityIdsRequested)
-    {
-        for (auto entityID : itEligibleEntity.second)
-        {
-            eligibleEntities.push_back(entityID);
-        }
-    }
-    if (isCalculateOption(taskId, optionId, eligibleEntities))
-    {
-        optionId++;
-    }
-
-    std::string compositionString("+(");
-    for (auto itOption = m_taskPlanOptions->getOptions().begin(); itOption != m_taskPlanOptions->getOptions().end(); itOption++)
-    {
-        compositionString += "p";
-        compositionString += std::to_string((*itOption)->getOptionID());
-        compositionString += " ";
-    }
-    compositionString += ")";
-
-    m_taskPlanOptions->setComposition(compositionString);
-
-    // send out the options
-    if (isSuccessful)
-    {
-        auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
-        sendSharedLmcpObjectBroadcastMessage(newResponse);
-    }
-}
-
 std::shared_ptr<afrl::cmasi::Location3D> CommRelayTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
 {
     auto middle = std::shared_ptr<afrl::cmasi::Location3D>(entityState->getLocation()->clone());
@@ -253,40 +214,6 @@ void CommRelayTaskService::moveToHalfWayPoint(const std::shared_ptr<afrl::cmasi:
         supportedEntityStateLocation->setLatitude(lat);
         supportedEntityStateLocation->setLongitude(lon);
 }
-
-bool CommRelayTaskService::isCalculateOption(const int64_t& taskId, int64_t & optionId, const std::vector<int64_t>& eligibleEntities)
-{
-    bool isSuccessful{true};
-
-    if (m_supportedEntityStateLast)
-    {
-        auto taskOption = new uxas::messages::task::TaskOption;
-        taskOption->setTaskID(taskId);
-        taskOption->setOptionID(optionId);
-        for (auto eligibleEntity : eligibleEntities)
-        {
-            taskOption->getEligibleEntities().push_back(eligibleEntity);
-        }        auto halfWayPoint = std::shared_ptr<afrl::cmasi::Location3D>(m_supportedEntityStateLast->clone());
-        moveToHalfWayPoint(halfWayPoint);
-        taskOption->setStartLocation(halfWayPoint->clone());
-        //taskOption->setStartHeading(m_supportedEntityStateLast->getHeading());
-        taskOption->setEndLocation(halfWayPoint->clone());
-        //taskOption->setEndHeading(m_supportedEntityStateLast->getHeading());
-        auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
-        m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
-        m_taskPlanOptions->getOptions().push_back(taskOption);
-        taskOption = nullptr; //just gave up ownership
-
-    }
-    else
-    {
-		UXAS_LOG_ERROR("Task_CommRelayTask:: no watchedEntityState found for Entity[" + std::to_string(m_CommRelayTask->getSupportedEntityID()) + "]");
-        isSuccessful = false;
-    }
-
-    return (isSuccessful);
-}
-
 
 }; //namespace task
 }; //namespace service
