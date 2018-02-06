@@ -30,6 +30,7 @@
 #include "uxas/messages/route/RouteRequest.h"
 #include "uxas/messages/route/RouteConstraints.h"
 #include "uxas/messages/uxnative/VideoRecord.h"
+#include <afrl/cmasi/AirVehicleState.h>
 
 #include "pugixml.hpp"
 #include "Constants/Convert.h"
@@ -536,6 +537,13 @@ void ImpactLineSearchTaskService::activeEntityState(const std::shared_ptr<afrl::
     uxas::common::utilities::CUnitConversions unitConversions;
     if (m_activeDpss)
     {
+        //dont attempt to move ground or surface vehicle cameras. They alrready follow lines
+        auto cast = std::static_pointer_cast<avtas::lmcp::Object>(entityState);
+        if (!afrl::cmasi::isAirVehicleState(cast))
+        {
+            return;
+        }
+
         double north_m(0.0);
         double east_m(0.0);
         unitConversions.ConvertLatLong_degToNorthEast_m(entityState->getLocation()->getLatitude(),
