@@ -78,17 +78,10 @@ bool TaskServiceBase::configure(const pugi::xml_node& serviceXmlNode)
         m_workDirectoryPath = "./";
     }
 
-    std::string strNewPathName;
-    std::stringstream sstrErrors;
-    std::stringstream sstrNewDirectoryPrefix;
-    sstrNewDirectoryPrefix << m_serviceType << "_ID" << std::setfill('0') << std::setw(4) << m_serviceId;
-    std::string strComponentPath = m_workDirectoryPath + "/Tasks/" + m_serviceType + "/";
-    isSuccessful = uxas::common::utilities::c_FileSystemUtilities::bCreateUniqueDirectory(strComponentPath, m_serviceType, strNewPathName, sstrErrors);
-    m_strSavePath = strNewPathName;
-
     m_task = generateTaskObject(serviceXmlNode);
     if (!m_task)
     {
+        std::stringstream sstrErrors;
         sstrErrors << "ERROR:: **Task_Base::bConfigure failed: could find a task in [" << serviceXmlNode.name() << "]" << std::endl;
         CERR_FILE_LINE_MSG(sstrErrors.str())
         isSuccessful = false;
