@@ -50,6 +50,7 @@ int64_t ConfigurationManager::s_entityStartTimeSinceEpoch_ms = 0;
 uint32_t ConfigurationManager::s_startDelay_ms = 0;
 uint32_t ConfigurationManager::s_runDuration_s = UINT32_MAX;
 bool ConfigurationManager::s_isLoggingThreadId{false};
+bool ConfigurationManager::s_isDataTimestamp{ false };
 
 uint32_t ConfigurationManager::s_entityId = 0;
 std::string ConfigurationManager::s_entityType{""};
@@ -396,6 +397,16 @@ ConfigurationManager::setEntityValuesFromXmlNode(const pugi::xml_node& xmlNode)
         else
         {
             UXAS_LOG_INFORM(s_typeName(), "::setEntityFromXmlNode retained default isLoggingThreadId ", s_isLoggingThreadId);
+        }
+
+        if (isSuccess && !entityInfoXmlNode.attribute(StringConstant::isDataTimestamp().c_str()).empty())
+        {
+          s_isDataTimestamp = entityInfoXmlNode.attribute(StringConstant::isDataTimestamp().c_str()).as_bool();
+          UXAS_LOG_INFORM(s_typeName(), "::setEntityFromXmlNode setting isDataTimeStamp ", s_isDataTimestamp);
+        }
+        else
+        {
+          UXAS_LOG_INFORM(s_typeName(), "::setEntityFromXmlNode retained default isDataTimeStamp ", s_isDataTimestamp);
         }
         uxas::common::log::LogManager::getInstance().m_isLoggingThreadId = s_isLoggingThreadId;
     }
