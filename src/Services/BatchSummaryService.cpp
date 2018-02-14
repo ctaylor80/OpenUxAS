@@ -196,55 +196,6 @@ void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<mes
 
     auto taskAutomationRequest = m_pendingTaskAutomationRequests.find(taskAutomationResponse->getResponseID())->second;
 
-    //iterate through taskAutomationResponse waypoints to reconstruct tasks.
-    //this gives ordering and lists of waypoints to reconstruct costs.
-    for (auto missionCommand : taskAutomationResponse->getOriginalResponse()->getMissionCommandList())
-    {
-        auto vehicle = missionCommand->getVehicleID();
-        auto taskStart = missionCommand->getWaypointList().begin();
-        bool iteratingToTask = true;
-        auto workingTask = -1;
-        auto prevTask = 0;
-        for (auto wpIter = missionCommand->getWaypointList().begin(); wpIter != missionCommand->getWaypointList().end(); wpIter++)
-        {
-            if (!(*wpIter)->getAssociatedTasks().empty())
-            {
-                if (iteratingToTask) //found first waypoint on task
-                {
-                    iteratingToTask = false;
-                    prevTask = workingTask;
-                    workingTask = (*wpIter)->getAssociatedTasks().front();
-                }
-            }
-            else
-            {
-                if (!iteratingToTask) //found last waypoint
-                {
-                    iteratingToTask = true;
-                    auto taskEnd = wpIter;
-                    //get the right TaskSummary
-                    for (auto workingResponse : m_workingResponse)
-                    {
-                        auto workingTaskSummary = std::find_if(workingResponse.second->getSummaries().begin(), workingResponse.second->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == workingTask; });
-                        if (workingTaskSummary != workingResponse.second->getSummaries().end())
-                        {
-                            //get the right vehicleSummary
-                            auto vehicleSummary = std::find_if((*workingTaskSummary)->getPerformingVehicles().begin(), (*workingTaskSummary)->getPerformingVehicles().end(), [&](const afrl::impact::VehicleSummary* x) {return x->getVehicleID() == vehicle; });
-                            if (vehicleSummary != (*workingTaskSummary)->getPerformingVehicles().end())
-                            {
-                                UpdateSummaryUtil(*vehicleSummary, taskStart, taskEnd + 1);
-                                UpdateSummary(*vehicleSummary, taskStart, taskEnd + 1);
-                                (*vehicleSummary)->setInitialTaskID(prevTask);
-                            }
-                        }
-                    }
-                    //set next taskStart
-                    taskStart = wpIter;
-                }
-            }
-        }
-    }
-
     //remove pending task automation response. If any are empty, finalize
     std::list<int64_t> finishedIds;
     auto batchSummary = std::find_if(m_batchSummaryRequestVsTaskAutomation.begin(), m_batchSummaryRequestVsTaskAutomation.end(),
@@ -253,11 +204,28 @@ void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<mes
 
     if (batchSummary != m_batchSummaryRequestVsTaskAutomation.end())
     {
+        auto batchSummaryResponse = m_workingResponse.find((*batchSummary).first);
+        
+        if (batchSummaryResponse != m_workingResponse.end())
+        {
+            UpdateTaskSummariesUtil(batchSummaryResponse->second->getSummaries(), taskAutomationResponse->getOriginalResponse()->getMissionCommandList());
+            
+            //iterate through vehicle summaries to set conflicts with ROZ and beyondCommRange
+            for (auto taskSummary : batchSummaryResponse->second->getSummaries())
+            {
+                for (auto vehicleSummary : taskSummary->getPerformingVehicles())
+                {
+                    BatchSummaryService::UpdateVehicleSummary(vehicleSummary);
+                }
+            }
+        }
+
         (*batchSummary).second.remove(taskAutomationResponse->getResponseID());
         if ((*batchSummary).second.empty())
         {
             finishedIds.push_back((*batchSummary).first);
         }
+
     }
 
 
@@ -378,13 +346,11 @@ bool BatchSummaryService::FinalizeBatchRequest(int64_t responseId)
         }
     }
 
-    if (!cleanResp->getSummaries().empty())
-    {
-        // Finally re-constructed a full batch response, send along to global
-        std::shared_ptr<avtas::lmcp::Object> pResponse = std::static_pointer_cast<avtas::lmcp::Object>(cleanResp);
-        sendSharedLmcpObjectBroadcastMessage(pResponse);
-        IMPACT_INFORM("sent batch summary id ", cleanResp->getResponseID());
-    }
+
+    // Finally re-constructed a full batch response, send along to global
+    std::shared_ptr<avtas::lmcp::Object> pResponse = std::static_pointer_cast<avtas::lmcp::Object>(cleanResp);
+    sendSharedLmcpObjectBroadcastMessage(pResponse);
+    IMPACT_INFORM("sent batch summary id ", cleanResp->getResponseID());
 
     // clear out this working response from the map
     m_workingResponse.erase(responseId);
@@ -557,6 +523,10 @@ void BatchSummaryService::HandleBatchSummaryRequest(std::shared_ptr<afrl::impact
         sendSharedLmcpObjectBroadcastMessage(pRequest);
     }
     IMPACT_INFORM("received batch request ", request->getRequestID(), ". split into ", requests.size(), " internal task Automation Requests");
+    if (requests.empty())
+    {
+        FinalizeBatchRequest(responseId);
+    }
 }
 
 void BatchSummaryService::UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end)
@@ -612,18 +582,65 @@ void BatchSummaryService::UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, 
 
 }
 
+void BatchSummaryService::UpdateTaskSummariesUtil(std::vector<afrl::impact::TaskSummary*> taskSummaries, std::vector<afrl::cmasi::MissionCommand*> missions)
+{
+    //iterate through waypoints to reconstruct tasks.
+    //this gives ordering and lists of waypoints to reconstruct costs.
+    for (auto missionCommand : missions)
+    {
+        auto vehicle = missionCommand->getVehicleID();
+        auto taskStart = missionCommand->getWaypointList().begin();
+        bool iteratingToTask = true;
+        auto workingTask = -1;
+        auto prevTask = 0;
+        for (auto wpIter = missionCommand->getWaypointList().begin(); wpIter != missionCommand->getWaypointList().end(); wpIter++)
+        {
+            if (!(*wpIter)->getAssociatedTasks().empty())
+            {
+                if (iteratingToTask) //found first waypoint on task
+                {
+                    iteratingToTask = false;
+                    prevTask = workingTask;
+                    workingTask = (*wpIter)->getAssociatedTasks().front();
+                }
+            }
+            else
+            {
+                if (!iteratingToTask) //found last waypoint
+                {
+                    iteratingToTask = true;
+                    auto taskEnd = wpIter;
+                    //get the right TaskSummary
+                    auto workingTaskSummary = std::find_if(taskSummaries.begin(), taskSummaries.end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == workingTask; });
+                    if (workingTaskSummary != taskSummaries.end())
+                    {
+                        //get the right vehicleSummary
+                        auto vehicleSummary = std::find_if((*workingTaskSummary)->getPerformingVehicles().begin(), (*workingTaskSummary)->getPerformingVehicles().end(), [&](const afrl::impact::VehicleSummary* x) {return x->getVehicleID() == vehicle; });
+                        if (vehicleSummary != (*workingTaskSummary)->getPerformingVehicles().end())
+                        {
+                            UpdateSummaryUtil(*vehicleSummary, taskStart, taskEnd + 1);
+                            (*vehicleSummary)->setInitialTaskID(prevTask);
+                        }
+                    }
+                    //set next taskStart
+                    taskStart = wpIter;
+                }
+            }
+        }
+    }
+}
 
-void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end)
+
+void BatchSummaryService::UpdateVehicleSummary(afrl::impact::VehicleSummary * vehicleSum)
 {
     uxas::common::utilities::CUnitConversions unitConversions;
 
 
     double north, east;
-
     //check conflicts with ROZ. Assume individual waypoints came from planner and do not conflict. Attached actions might.
-    for (auto wp = task_begin; wp != task_end; wp++)
+    for (auto wp : vehicleSum->getWaypointList())
     {
-        for (auto action : (*wp)->getVehicleActionList())
+        for (auto action : wp->getVehicleActionList())
         {
             if (afrl::cmasi::isLoiterAction(action))
             {
@@ -640,7 +657,7 @@ void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, cons
                         p.set_y(north + length * sin(rad));
                         if (p.in(*koz.second, 1e-4))
                         {
-                            sum->setConflictsWithROZ(true);
+                            vehicleSum->setConflictsWithROZ(true);
                             break;
                         }
                     }
@@ -650,21 +667,21 @@ void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, cons
     }
 
     // calculate 'EnergyRemaining'
-    sum->setEnergyRemaining(100.0f);
+    vehicleSum->setEnergyRemaining(100.0f);
 
-    if (m_entityStates.find(sum->getVehicleID()) != m_entityStates.end())
+    if (m_entityStates.find(vehicleSum->getVehicleID()) != m_entityStates.end())
     {
         // get current energy of vehicle and energy expenditure rate
-        double e = m_entityStates[sum->getVehicleID()]->getEnergyAvailable(); // %
-        double erate = m_entityStates[sum->getVehicleID()]->getActualEnergyRate(); // %/s
+        double e = m_entityStates[vehicleSum->getVehicleID()]->getEnergyAvailable(); // %
+        double erate = m_entityStates[vehicleSum->getVehicleID()]->getActualEnergyRate(); // %/s
 
-        int64_t time = sum->getTimeToArrive() + sum->getTimeOnTask();
+        int64_t time = vehicleSum->getTimeToArrive() + vehicleSum->getTimeOnTask();
 
         // linear approximation of energy remaining
         double eloss = time * erate / 1000.0; // time back to seconds from milliseconds
         e -= eloss;
         e = (e < 0) ? 0.0 : e;
-        sum->setEnergyRemaining(e);
+        vehicleSum->setEnergyRemaining(e);
     }
 
     // check comm range
@@ -675,7 +692,7 @@ void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, cons
         double tn, te;
         unitConversions.ConvertLatLong_degToNorthEast_m(t.second->getLatitude(), t.second->getLongitude(), tn, te);
 
-        if (m_entityStates.find(sum->getVehicleID()) != m_entityStates.end() &&
+        if (m_entityStates.find(vehicleSum->getVehicleID()) != m_entityStates.end() &&
             m_towerRanges.find(t.first) != m_towerRanges.end())
         {
             double vn, ve;
@@ -686,9 +703,9 @@ void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, cons
             }
 
             // set to max of vehicle, tower
-            if (m_entityConfigs.find(sum->getVehicleID()) != m_entityConfigs.end())
+            if (m_entityConfigs.find(vehicleSum->getVehicleID()) != m_entityConfigs.end())
             {
-                for (auto pay : m_entityConfigs[sum->getVehicleID()]->getPayloadConfigurationList())
+                for (auto pay : m_entityConfigs[vehicleSum->getVehicleID()]->getPayloadConfigurationList())
                 {
                     if (afrl::impact::isRadioConfiguration(pay))
                     {
@@ -702,18 +719,18 @@ void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, cons
             }
 
             unitConversions.ConvertLatLong_degToNorthEast_m(
-                m_entityStates[sum->getVehicleID()]->getLocation()->getLatitude(),
-                m_entityStates[sum->getVehicleID()]->getLocation()->getLongitude(), vn, ve);
+                m_entityStates[vehicleSum->getVehicleID()]->getLocation()->getLatitude(),
+                m_entityStates[vehicleSum->getVehicleID()]->getLocation()->getLongitude(), vn, ve);
             double vdist = sqrt((tn - vn) * (tn - vn) + (te - ve) * (te - ve));
             beyondThisTower = (vdist > towerRange);
-            for (auto wp = task_begin; wp != task_end; wp++)
+            for (auto wp : vehicleSum->getWaypointList())
             {
                 if (beyondThisTower)
                     break;
                 double pn, pe;
-                unitConversions.ConvertLatLong_degToNorthEast_m((*wp)->getLatitude(), (*wp)->getLongitude(), pn, pe);
+                unitConversions.ConvertLatLong_degToNorthEast_m(wp->getLatitude(), wp->getLongitude(), pn, pe);
                 double pdist = sqrt((tn - pn) * (tn - pn) + (te - pe) * (te - pe));
-                for (auto a : (*wp)->getVehicleActionList())
+                for (auto a : wp->getVehicleActionList())
                 {
                     if (afrl::cmasi::isLoiterAction(a))
                     {
@@ -740,7 +757,7 @@ void BatchSummaryService::UpdateSummary(afrl::impact::VehicleSummary * sum, cons
         }
     }
 
-    sum->setBeyondCommRange(!inCommRange);
+    vehicleSum->setBeyondCommRange(!inCommRange);
 }
 
 

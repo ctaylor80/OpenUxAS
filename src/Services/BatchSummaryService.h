@@ -78,6 +78,7 @@ namespace uxas
                 ~BatchSummaryService();
 
             static void UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end);
+            static void UpdateTaskSummariesUtil(std::vector<afrl::impact::TaskSummary*> taskSummaries, std::vector<afrl::cmasi::MissionCommand*> missions);
             static std::shared_ptr<VisiLibity::Polygon> FromAbstractGeometry(afrl::cmasi::AbstractGeometry* geom);
             static bool LinearizeBoundary(afrl::cmasi::AbstractGeometry* boundary, std::shared_ptr<VisiLibity::Polygon>& poly);
 
@@ -108,7 +109,7 @@ namespace uxas
 
             void HandleBatchSummaryRequest(std::shared_ptr<afrl::impact::BatchSummaryRequest>);
             void HandleEgressRouteResponse(std::shared_ptr<uxas::messages::route::EgressRouteResponse>);
-            void UpdateSummary(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end);
+            void UpdateVehicleSummary(afrl::impact::VehicleSummary * vehicleSum);
             bool FinalizeBatchRequest(int64_t);
             void BuildSummaryOptions(int64_t, std::shared_ptr<afrl::impact::BatchSummaryResponse>&, std::vector<std::shared_ptr<afrl::impact::VehicleSummary> >&, int64_t);
             void HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& object);
