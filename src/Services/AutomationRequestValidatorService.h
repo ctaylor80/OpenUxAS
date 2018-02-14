@@ -218,7 +218,6 @@ private:
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::OperatingRegion> > m_availableOperatingRegions;
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Task> > m_availableTasks;
     std::unordered_set<int64_t> m_availableInitializedTasks;
-    std::list<std::shared_ptr<messages::task::TaskImplementationResponse>> m_availableTaskResponses;
 
     std::unordered_set<int64_t> m_timedOutRequests;
 };

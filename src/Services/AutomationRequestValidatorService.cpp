@@ -135,7 +135,6 @@ AutomationRequestValidatorService::configure(const pugi::xml_node & ndComponent)
     for(auto child : childtasks)
         addSubscriptionAddress(child);
 
-    addSubscriptionAddress(messages::task::TaskImplementationResponse::Subscription);
     // task removal and initialization
     addSubscriptionAddress(afrl::cmasi::RemoveTasks::Subscription);
     addSubscriptionAddress(uxas::messages::task::TaskInitialized::Subscription);
@@ -207,11 +206,6 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
     {
         auto operatingRegion = std::static_pointer_cast<afrl::cmasi::OperatingRegion>(receivedLmcpMessage->m_object);
         m_availableOperatingRegions[operatingRegion->getID()] = operatingRegion;
-    }
-    else if (messages::task::isTaskImplementationResponse(receivedLmcpMessage->m_object))
-    {
-        auto taskImplementationResponse = std::static_pointer_cast<messages::task::TaskImplementationResponse>(receivedLmcpMessage->m_object);
-        m_availableTaskResponses.push_back(taskImplementationResponse);
     }
     else if (afrl::cmasi::isServiceStatus(receivedLmcpMessage->m_object))
     {
@@ -357,41 +351,37 @@ void AutomationRequestValidatorService::HandleAutomationResponse(std::shared_ptr
             sandResponse->setSandbox(m_sandboxMap[resp->getResponseID()].sandboxed);
             sandResponse->setResponseID(m_sandboxMap[resp->getResponseID()].taskRequestId);
 
-            //TODO: pull all information from MissionCommands
             std::set<int64_t> tasks;
-            std::for_each(m_availableTaskResponses.begin(), m_availableTaskResponses.end(), [&](const std::shared_ptr<messages::task::TaskImplementationResponse> x) {tasks.insert(x->getTaskID()); });
-
+            std::set<int64_t> vehicles;
+            //TODO: pull vehicle and task list from automation request
+            for (auto missionCommand : resp->getOriginalResponse()->getMissionCommandList())
+            {
+                vehicles.insert(missionCommand->getVehicleID());
+                for (auto wp : missionCommand->getWaypointList())
+                {
+                    for (auto task : wp->getAssociatedTasks())
+                    {
+                        tasks.insert(task);
+                    }
+                }
+            }
+            //stub out task and vehicle summaries from missionCommands
             for (auto task : tasks)
             {
                 auto taskSummary = std::make_shared<afrl::impact::TaskSummary>();
                 taskSummary->setTaskID(task);
+
+                for (auto vehicle : vehicles)
+                {
+                    auto vehicleSummary = std::make_shared<afrl::impact::VehicleSummary>();
+                    vehicleSummary->setVehicleID(vehicle);
+                    vehicleSummary->setDestinationTaskID(task);
+                    taskSummary->getPerformingVehicles().push_back(vehicleSummary->clone());
+                }
                 sandResponse->getSummaries().push_back(taskSummary->clone());
             }
-
-            auto lastVehicleID = -1;
-            auto lastTask = -1;
-            for (auto taskImplementation : m_availableTaskResponses)
-            {
-                auto summary = std::make_shared<afrl::impact::VehicleSummary>();
-                summary->setVehicleID(taskImplementation->getVehicleID());
-                summary->setDestinationTaskID(taskImplementation->getTaskID());
-                //consecutive responses with same vehicle implies sequential tasks
-                if (taskImplementation->getVehicleID() == lastVehicleID) {
-                    summary->setInitialTaskID(lastTask);
-                }
-                if (!resp->getOriginalResponse()->getMissionCommandList().empty())
-                {
-                    auto waypoints = resp->getOriginalResponse()->getMissionCommandList().front()->getWaypointList();
-                    BatchSummaryService::UpdateSummaryUtil(summary.get(), waypoints.begin(), waypoints.end());
-                }
-
-                auto taskSummary = std::find_if(sandResponse->getSummaries().begin(), sandResponse->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == taskImplementation->getTaskID(); });
-                if (taskSummary != sandResponse->getSummaries().end()) {
-                    (*taskSummary)->getPerformingVehicles().push_back(summary->clone());
-                }
-                lastVehicleID = taskImplementation->getVehicleID();
-                lastTask = taskImplementation->getTaskID();
-            }
+            //run it
+            BatchSummaryService::UpdateTaskSummariesUtil(sandResponse->getSummaries(), resp->getOriginalResponse()->getMissionCommandList());
 
             sendSharedLmcpObjectBroadcastMessage(sandResponse);
             IMPACT_INFORM("sent ImpactAutomationResponse ", sandResponse->getResponseID());
@@ -403,7 +393,6 @@ void AutomationRequestValidatorService::HandleAutomationResponse(std::shared_ptr
             }
 
         }
-        m_availableTaskResponses.clear();
         m_sandboxMap.erase(resp->getResponseID());
         m_pendingRequests.pop_front();
         sendNextRequest();
