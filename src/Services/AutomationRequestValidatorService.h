@@ -201,6 +201,8 @@ private:
         int64_t taskRequestId{0};
         bool sandboxed{true};
     };
+
+    communications::LmcpObjectMessageSenderPipe m_messageSender;
     
     // storage
     std::deque< std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> > m_pendingRequests;

@@ -88,6 +88,8 @@ AutomationRequestValidatorService::initialize()
         std::bind(&AutomationRequestValidatorService::OnTasksReadyTimeout, this),
         "AutomationRequestValidatorService::OnTasksReadyTimeout()");
 
+    m_messageSender.initializePush(m_messageSourceGroup, 0, 0);
+
     return true;
 }
 
@@ -403,18 +405,15 @@ void AutomationRequestValidatorService::OnResponseTimeout()
 {
     if(!m_pendingRequests.empty())
     {
-        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_pendingRequests.front();
-        m_pendingRequests.pop_front();
-        
-        // send time-out error
-        std::stringstream reasonForFailure;
-        reasonForFailure << "- automation request ID[" << timedOut->getRequestID() << "] was not ready in time and was not sent." << std::endl;
-
-        auto id = timedOut->getRequestID();
-        m_timedOutRequests.insert(id);
-        sendResponseError(timedOut, reasonForFailure.str());
+        //Send to self. This will execute on the ZMQ processing thread
+        auto err = std::make_shared<afrl::cmasi::ServiceStatus>();
+        err->setStatusType(afrl::cmasi::ServiceStatusType::Error);
+        auto kvp = new afrl::cmasi::KeyValuePair();
+        kvp->setKey("No UniqueAutomationResponse");
+        kvp->setValue("Timeout");
+        err->getInfo().push_back(kvp);
+        m_messageSender.sendSharedLimitedCastMessage(m_entityIdNetworkIdUnicastString, err);
     }
-    sendNextRequest();
 }
 
 void AutomationRequestValidatorService::OnTasksReadyTimeout()
@@ -476,7 +475,6 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
     {
         UXAS_LOG_ERROR("ERROR reported for a response that has already been sent!");
     }
-    checkTasksInitialized();
 }
 
 void AutomationRequestValidatorService::sendNextRequest()
