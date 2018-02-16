@@ -200,6 +200,7 @@ private:
         int64_t solnId{0};
         int64_t taskRequestId{0};
         bool sandboxed{true};
+        std::shared_ptr<afrl::cmasi::AutomationRequest> originalRequest;
     };
 
     communications::LmcpObjectMessageSenderPipe m_messageSender;

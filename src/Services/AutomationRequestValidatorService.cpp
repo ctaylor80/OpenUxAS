@@ -264,7 +264,7 @@ void AutomationRequestValidatorService::HandleAutomationRequest(std::shared_ptr<
         m_sandboxMap[uniqueAutomationRequest->getRequestID()].solnId = sand->getSolutionID();
         m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = sand->getSandbox();
         m_sandboxMap[uniqueAutomationRequest->getRequestID()].taskRequestId = sand->getRequestID();
-
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].originalRequest = std::shared_ptr<afrl::cmasi::AutomationRequest>(sand->getTrialRequest()->clone());
         uniqueAutomationRequest->setOriginalRequest(sand->getTrialRequest()->clone());
         uniqueAutomationRequest->setSandBoxRequest(sand->getSandbox());
         auto req = sand->getTrialRequest();
@@ -353,27 +353,13 @@ void AutomationRequestValidatorService::HandleAutomationResponse(std::shared_ptr
             sandResponse->setSandbox(m_sandboxMap[resp->getResponseID()].sandboxed);
             sandResponse->setResponseID(m_sandboxMap[resp->getResponseID()].taskRequestId);
 
-            std::set<int64_t> tasks;
-            std::set<int64_t> vehicles;
-            //TODO: pull vehicle and task list from automation request
-            for (auto missionCommand : resp->getOriginalResponse()->getMissionCommandList())
-            {
-                vehicles.insert(missionCommand->getVehicleID());
-                for (auto wp : missionCommand->getWaypointList())
-                {
-                    for (auto task : wp->getAssociatedTasks())
-                    {
-                        tasks.insert(task);
-                    }
-                }
-            }
             //stub out task and vehicle summaries from missionCommands
-            for (auto task : tasks)
+            for (auto task : m_sandboxMap[resp->getResponseID()].originalRequest->getTaskList())
             {
                 auto taskSummary = std::make_shared<afrl::impact::TaskSummary>();
                 taskSummary->setTaskID(task);
 
-                for (auto vehicle : vehicles)
+                for (auto vehicle : m_sandboxMap[resp->getResponseID()].originalRequest->getEntityList())
                 {
                     auto vehicleSummary = std::make_shared<afrl::impact::VehicleSummary>();
                     vehicleSummary->setVehicleID(vehicle);
