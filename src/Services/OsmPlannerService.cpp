@@ -58,7 +58,10 @@ OsmPlannerService::ServiceBase::CreationRegistrar<OsmPlannerService>
 OsmPlannerService::s_registrar(OsmPlannerService::s_registryServiceTypeNames());
 
 OsmPlannerService::OsmPlannerService()
-: ServiceBase(OsmPlannerService::s_typeName(), OsmPlannerService::s_directoryName()) { };
+: ServiceBase(OsmPlannerService::s_typeName(), OsmPlannerService::s_directoryName())
+{
+    m_strSavePath = "OsmPlannerService";
+};
 
 OsmPlannerService::~OsmPlannerService() { };
 
@@ -268,23 +271,28 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
     routePlanResponse->setOperatingRegion(routePlanRequest->getOperatingRegion());
     routePlanResponse->setVehicleID(routePlanRequest->getVehicleID());
 
-    if (m_graph && m_planningIndexVsNodeId && m_idVsNode)
+
+
+    // extract route speed
+    double speed = 1.0; // default to just distance
+    if (m_entityConfigurations.find(routePlanRequest->getVehicleID()) != m_entityConfigurations.end())
     {
-
-        // extract route speed
-        double speed = 1.0; // default to just distance
-        if (m_entityConfigurations.find(routePlanRequest->getVehicleID()) != m_entityConfigurations.end())
+        speed = m_entityConfigurations[routePlanRequest->getVehicleID()]->getNominalSpeed();
+        if (speed < 1.0)
         {
-            speed = m_entityConfigurations[routePlanRequest->getVehicleID()]->getNominalSpeed();
-            if (speed < 1.0)
-            {
-                speed = 1.0;
-            }
+            speed = 1.0;
         }
+    }
 
-        for (auto itRequest = routePlanRequest->getRouteRequests().begin();
-                itRequest != routePlanRequest->getRouteRequests().end();
-                itRequest++)
+    for (auto itRequest = routePlanRequest->getRouteRequests().begin();
+            itRequest != routePlanRequest->getRouteRequests().end();
+            itRequest++)
+    {
+        auto routePlan = new uxas::messages::route::RoutePlan;
+        routePlan->setRouteID((*itRequest)->getRouteID());
+        routePlan->setRouteCost(-1);
+
+        if (m_graph && m_planningIndexVsNodeId && m_idVsNode)
         {
             auto startTime = std::chrono::system_clock::now();
 
@@ -313,8 +321,6 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
                 std::deque<int64_t> pathNodeIds;
                 if (isFindShortestRoute(nodeIdStart, nodeIdEnd, pathCost, pathNodeIds))
                 {
-                    auto routePlan = new uxas::messages::route::RoutePlan;
-                    routePlan->setRouteID((*itRequest)->getRouteID());
                     float routCost = (static_cast<float> (lengthFromStartToNode) +
                             static_cast<float> (lengthFromNodeToEnd) +
                             static_cast<float> (pathCost)) / speed;
@@ -442,8 +448,6 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
                         waypoint = nullptr; // gave up ownership
                     }
                     numberWaypoints = routePlan->getWaypoints().size();
-                    routePlanResponse->getRouteResponses().push_back(routePlan);
-                    routePlan = nullptr; //gave it up
                 }
                 else
                 {
@@ -513,11 +517,13 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
             }
             else //if(isFindClosestIndices(positionStart,positionEnd,indexIdStart,index ...
             {
-                UXAS_LOG_ERROR("bProcessRoutePlanRequest:: could not find graph indices for RouteRequestId[", (*itRequest)->getRouteID(), "].");
+                UXAS_LOG_WARN("bProcessRoutePlanRequest:: could not find graph indices for RouteRequestId[", (*itRequest)->getRouteID(), "].");
                 isSuccess = false;
             } //if(isFindClosestIndices(positionStart,positionEnd,indexIdStart,index  ...
-        } //for (auto itRequest = routePlanRequest->getRouteRequests()
-    } //if(m_graph && m_planningIndexVsNodeId && m_idVsNode)
+        } //if(m_graph && m_planningIndexVsNodeId && m_idVsNode)
+        routePlanResponse->getRouteResponses().push_back(routePlan);
+        routePlan = nullptr; //gave it up
+    } //for (auto itRequest = routePlanRequest->getRouteRequests()
 
     return (isSuccess);
 }
