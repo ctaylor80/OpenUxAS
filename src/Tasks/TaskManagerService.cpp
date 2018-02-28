@@ -275,9 +275,9 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
         {
           createNewServiceMessage->getKeepOutZones().push_back(koz.second->clone());
         }
-        for (auto or : m_idVsOperatingRegion)
+        for (auto opr : m_idVsOperatingRegion)
         {
-          createNewServiceMessage->getOperatingRegions().push_back(or .second->clone());
+          createNewServiceMessage->getOperatingRegions().push_back(opr .second->clone());
         }
 
         // add the appropriate area/line/point of interest if new task requires knowledge of it
@@ -427,8 +427,8 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
     }
     else if (afrl::cmasi::isOperatingRegion(messageObject.get()))
     {
-        auto or = std::static_pointer_cast<afrl::cmasi::OperatingRegion>(messageObject);
-        m_idVsOperatingRegion[or ->getID()] = or ;
+        auto opr = std::static_pointer_cast<afrl::cmasi::OperatingRegion>(messageObject);
+        m_idVsOperatingRegion[opr ->getID()] = opr ;
     }
     else if (afrl::cmasi::isFollowPathCommand(messageObject.get()))
     {

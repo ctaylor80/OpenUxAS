@@ -167,9 +167,9 @@ bool TaskServiceBase::configure(const pugi::xml_node& serviceXmlNode)
         }
         else if (afrl::cmasi::isOperatingRegion(object))
         {
-            std::shared_ptr<afrl::cmasi::OperatingRegion> or;
-            or.reset(static_cast<afrl::cmasi::OperatingRegion*>(object->clone()));
-            m_OperatingRegions[or->getID()] = or;
+            std::shared_ptr<afrl::cmasi::OperatingRegion> opr;
+            opr.reset(static_cast<afrl::cmasi::OperatingRegion*>(object->clone()));
+            m_OperatingRegions[opr->getID()] = opr;
         }
         delete object;
     }

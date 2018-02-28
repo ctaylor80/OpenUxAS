@@ -34,7 +34,7 @@
 #include <cstdint> // int64_t
 #include <deque>
 #include <unordered_map>
-
+#include <list>
 namespace uxas
 {
 namespace service
