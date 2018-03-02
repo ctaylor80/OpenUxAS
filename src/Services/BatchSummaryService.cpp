@@ -477,32 +477,59 @@ void BatchSummaryService::HandleBatchSummaryRequest(std::shared_ptr<afrl::impact
             }
         }
     }
-    else //assume task relationship is a sequence. add all tasks to each request and send a request per vehicle
+    else //assume realtionship wants intertask information. Split accordingly
     {
         for (auto vehicle : request->getVehicles())
         {
-            auto taskAutomationRequest = std::make_shared<messages::task::TaskAutomationRequest>();
-            taskAutomationRequest->setSandBoxRequest(true);
-
-            auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
-            for (auto task : request->getTaskList())
+            for (auto taski : request->getTaskList())
             {
-                automationRequest->getTaskList().push_back(task);
+                //vehicle to task summary
+                auto workingTaskSummaryi = std::find_if(m_workingResponse[responseId]->getSummaries().begin(), m_workingResponse[responseId]->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == taski; });
+                auto summaryVehicleToTask = std::make_shared<afrl::impact::VehicleSummary>();
+                summaryVehicleToTask->setVehicleID(vehicle);
+                summaryVehicleToTask->setDestinationTaskID(taski);
+                summaryVehicleToTask->setTimeOnTask(-1);
+                summaryVehicleToTask->setTimeToArrive(-1);
 
-                auto workingTaskSummary = std::find_if(m_workingResponse[responseId]->getSummaries().begin(), m_workingResponse[responseId]->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == task; });
-                auto summary = std::make_shared<afrl::impact::VehicleSummary>();
-                summary->setVehicleID(vehicle);
-                summary->setDestinationTaskID(-1);
-                summary->setTimeOnTask(-1);
-                summary->setTimeToArrive(-1);
-                if (workingTaskSummary != m_workingResponse[responseId]->getSummaries().end())
+                if (workingTaskSummaryi != m_workingResponse[responseId]->getSummaries().end())
                 {
-                    (*workingTaskSummary)->getPerformingVehicles().push_back(summary->clone());
+                    (*workingTaskSummaryi)->getPerformingVehicles().push_back(summaryVehicleToTask->clone());
                 }
+
+                for (auto taskj : request ->getTaskList())
+                {
+                    if (taski == taskj)
+                    {
+                        continue;
+                    }
+                    auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
+
+                    automationRequest->getTaskList().push_back(taski);
+                    automationRequest->getTaskList().push_back(taskj);
+                    automationRequest->setTaskRelationships(".(p" + std::to_string(taski) + " p" + std::to_string(taskj) + ")");
+                    automationRequest->getEntityList().push_back(vehicle);
+
+                    //task to task summaries
+                    auto workingTaskSummaryj = std::find_if(m_workingResponse[responseId]->getSummaries().begin(), m_workingResponse[responseId]->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == taskj; });
+                    auto summaryTaskToTask = std::make_shared<afrl::impact::VehicleSummary>();
+                    summaryTaskToTask->setVehicleID(vehicle);
+                    summaryTaskToTask->setInitialTaskID(taski);
+                    summaryTaskToTask->setDestinationTaskID(taskj);
+                    summaryTaskToTask->setTimeOnTask(-1);
+                    summaryTaskToTask->setTimeToArrive(-1);
+
+
+                    if (workingTaskSummaryj != m_workingResponse[responseId]->getSummaries().end())
+                    {
+                        (*workingTaskSummaryj)->getPerformingVehicles().push_back(summaryTaskToTask->clone());
+                    }
+
+
+                    requests.push_back(automationRequest);
+                }
+
             }
-            automationRequest->setTaskRelationships(request->getTaskRelationships());
-            automationRequest->getEntityList().push_back(vehicle);
-            requests.push_back(automationRequest);
+
         }
     }
 
@@ -591,7 +618,7 @@ void BatchSummaryService::UpdateTaskSummariesUtil(std::vector<afrl::impact::Task
         auto vehicle = missionCommand->getVehicleID();
         auto taskStart = missionCommand->getWaypointList().begin();
         bool iteratingToTask = true;
-        auto workingTask = -1;
+        auto workingTask = 0;
         auto prevTask = 0;
         for (auto wpIter = missionCommand->getWaypointList().begin(); wpIter != missionCommand->getWaypointList().end(); wpIter++)
         {
@@ -615,7 +642,8 @@ void BatchSummaryService::UpdateTaskSummariesUtil(std::vector<afrl::impact::Task
                     if (workingTaskSummary != taskSummaries.end())
                     {
                         //get the right vehicleSummary
-                        auto vehicleSummary = std::find_if((*workingTaskSummary)->getPerformingVehicles().begin(), (*workingTaskSummary)->getPerformingVehicles().end(), [&](const afrl::impact::VehicleSummary* x) {return x->getVehicleID() == vehicle; });
+                        auto vehicleSummary = std::find_if((*workingTaskSummary)->getPerformingVehicles().begin(), (*workingTaskSummary)->getPerformingVehicles().end(), 
+                            [&](const afrl::impact::VehicleSummary* x) {return x->getVehicleID() == vehicle && x->getDestinationTaskID() == workingTask && x->getInitialTaskID() == prevTask; });
                         if (vehicleSummary != (*workingTaskSummary)->getPerformingVehicles().end())
                         {
                             UpdateSummaryUtil(*vehicleSummary, taskStart, taskEnd + 1);
