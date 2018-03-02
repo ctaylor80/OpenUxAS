@@ -31,6 +31,7 @@
 #include <iostream>     // std::cout, cerr, etc
 #include <afrl/cmasi/LoiterAction.h>
 #include <afrl/impact/ImpactAutomationRequest.h>
+#include <afrl/impact/ImpactAutomationResponse.h>
 
 #define STRING_XML_ASSIGNMENT_START_POINT_LEAD_M "AssignmentStartPointLead_m"
 #define STRING_XML_ADD_LOITER_TO_END_OF_MISSION "AddLoiterToEndOfMission"
@@ -69,6 +70,7 @@ PlanBuilderService::configure(const pugi::xml_node& ndComponent)
     addSubscriptionAddress(uxas::messages::task::TaskAssignmentSummary::Subscription);
     addSubscriptionAddress(uxas::messages::task::TaskImplementationResponse::Subscription);
     addSubscriptionAddress(afrl::impact::ImpactAutomationRequest::Subscription);
+    addSubscriptionAddress(afrl::impact::ImpactAutomationResponse::Subscription);
 
     // ENTITY STATES
     addSubscriptionAddress(afrl::cmasi::EntityState::Subscription);
@@ -94,6 +96,11 @@ PlanBuilderService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
         {
             m_reqeustIDVsOverrides[impactAutomationResponse->getRequestID()].push_back(std::shared_ptr<afrl::impact::SpeedAltPair>(override->clone()));
         }
+    }
+    else if (afrl::impact::isImpactAutomationResponse(receivedLmcpMessage->m_object))
+    {
+        auto impactAutomationResponse = std::static_pointer_cast<afrl::impact::ImpactAutomationResponse>(receivedLmcpMessage->m_object);
+        m_reqeustIDVsOverrides.erase(impactAutomationResponse->getResponseID());
     }
     else if(uxas::messages::task::isTaskAssignmentSummary(receivedLmcpMessage->m_object))
     {
@@ -331,13 +338,10 @@ void PlanBuilderService::processTaskImplementationResponse(const std::shared_ptr
         //check overrides
         for (auto requestID : m_reqeustIDVsOverrides)
         {
-            if (requestID.first != taskImplementationResponse->getCorrespondingAutomationRequestID())
-            {
-                continue;
-            }
             for (auto speedAltPair : requestID.second)
             {
-                if (speedAltPair->getVehicleID() == taskImplementationResponse->getVehicleID())
+                if (speedAltPair->getVehicleID() == taskImplementationResponse->getVehicleID() && 
+                    (speedAltPair->getTaskID() == taskImplementationResponse->getTaskID() || speedAltPair->getTaskID() == 0))
                 {
                     for (auto wp : taskImplementationResponse->getTaskWaypoints())
                     {

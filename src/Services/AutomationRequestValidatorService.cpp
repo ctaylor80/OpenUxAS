@@ -258,7 +258,6 @@ void AutomationRequestValidatorService::HandleAutomationRequest(std::shared_ptr<
     if (afrl::impact::isImpactAutomationRequest(autoRequest))
     {
         auto sand = std::static_pointer_cast<afrl::impact::ImpactAutomationRequest>(autoRequest);
-        uniqueAutomationRequest->setRequestID(sand->getRequestID());
         m_sandboxMap[uniqueAutomationRequest->getRequestID()].requestType = SANDBOX_AUTOMATION_REQUEST;
         m_sandboxMap[uniqueAutomationRequest->getRequestID()].playId = sand->getPlayID();
         m_sandboxMap[uniqueAutomationRequest->getRequestID()].solnId = sand->getSolutionID();
@@ -274,7 +273,6 @@ void AutomationRequestValidatorService::HandleAutomationRequest(std::shared_ptr<
     else if (uxas::messages::task::isTaskAutomationRequest(autoRequest))
     {
         auto taskAutomationRequest = std::static_pointer_cast<uxas::messages::task::TaskAutomationRequest>(autoRequest);
-        uniqueAutomationRequest->setRequestID(taskAutomationRequest->getRequestID());
 
         uniqueAutomationRequest->setOriginalRequest((afrl::cmasi::AutomationRequest*) taskAutomationRequest->getOriginalRequest()->clone());
         uniqueAutomationRequest->setSandBoxRequest(taskAutomationRequest->getSandBoxRequest());
@@ -423,7 +421,7 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
     auto req = errorRequest->getOriginalRequest();
     auto reqID = errorRequest->getRequestID();
     auto desc = generateDescription(req->getEntityList(), req->getTaskList());
-    UXAS_LOG_ERROR("failure to create response: ", errStr, " ", desc);    
+    UXAS_LOG_ERROR("Sending Error Response: ", errStr, " ", desc);    
     auto errorResponse = std::make_shared<afrl::cmasi::AutomationResponse>();
 
     auto keyValuePair = new afrl::cmasi::KeyValuePair;
@@ -459,7 +457,7 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
     }
     else
     {
-        UXAS_LOG_ERROR("ERROR reported for a response that has already been sent!");
+        UXAS_LOG_ERROR("ERROR reported for a response that has already been sent! ", errStr);
     }
 }
 
@@ -754,7 +752,7 @@ std::string AutomationRequestValidatorService::generateDescription(std::vector<i
     {
         if (m_availableTasks.find(task) != m_availableTasks.end())
         {
-            tasksDesc += m_availableTasks.find(task)->second->getLmcpTypeName() + " ";
+            tasksDesc += m_availableTasks.find(task)->second->getLmcpTypeName() + " " + std::to_string(task) + " ";
         }
         else
         {
