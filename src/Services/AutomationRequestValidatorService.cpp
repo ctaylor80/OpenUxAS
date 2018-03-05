@@ -434,7 +434,7 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
         {
             auto taskResponse = std::make_shared<uxas::messages::task::TaskAutomationResponse>();
             taskResponse->setOriginalResponse(errorResponse->clone());
-            taskResponse->setResponseID(reqID);
+            taskResponse->setResponseID(m_sandboxMap[reqID].taskRequestId);
             sendSharedLmcpObjectBroadcastMessage(taskResponse);
         }
         else if (m_sandboxMap[reqID].requestType == AUTOMATION_REQUEST)
@@ -449,7 +449,7 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
             sandResponse->setPlayID(m_sandboxMap[reqID].playId);
             sandResponse->setSolutionID(m_sandboxMap[reqID].solnId);
             sandResponse->setSandbox(false);
-            sandResponse->setResponseID(reqID);
+            sandResponse->setResponseID(m_sandboxMap[reqID].taskRequestId);
             sandResponse->setTrialResponse(errorResponse->clone());
             sendSharedLmcpObjectBroadcastMessage(sandResponse);
         }
