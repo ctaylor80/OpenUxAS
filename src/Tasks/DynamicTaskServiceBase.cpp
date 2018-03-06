@@ -8,7 +8,7 @@
 // ===============================================================================
 
 /*
-* File:   Task_EscortTask.cpp
+* File:   DynamicTaskServiceBase.cpp
 * Author: Colin
 */
 #include "DynamicTaskServiceBase.h"
@@ -38,7 +38,7 @@ bool DynamicTaskServiceBase::configureTask(const pugi::xml_node& serviceXmlNode)
 
     addSubscriptionAddress(afrl::cmasi::KeepOutZone::Subscription);
     addSubscriptionAddress(afrl::cmasi::OperatingRegion::Subscription);
-
+    addSubscriptionAddress(messages::task::UniqueAutomationResponse::Subscription);
     configureDynamicTask(serviceXmlNode);
     return true;
 }
@@ -111,6 +111,12 @@ bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avta
             auto mish = std::make_shared<afrl::cmasi::MissionCommand>();
             for (auto wp : newRoute)
             {
+                if (m_vehicleIDVsSpeedAltitudePair.find(response->getVehicleID()) != m_vehicleIDVsSpeedAltitudePair.end())
+                {
+                    auto override = m_vehicleIDVsSpeedAltitudePair[response->getVehicleID()];
+                    wp->setSpeed(override.first);
+                    wp->setAltitude(override.second);
+                }
                 wp->getAssociatedTasks().push_back(m_task->getTaskID());
                 mish->getWaypointList().push_back(wp->clone());
             }
@@ -163,10 +169,20 @@ bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avta
         auto operatingRegion = std::dynamic_pointer_cast<afrl::cmasi::OperatingRegion>(receivedLmcpObject);
         m_OperatingRegions[operatingRegion->getID()] = operatingRegion;
     }
-    else
+    else if (messages::task::isUniqueAutomationResponse(receivedLmcpObject))
     {
-        processRecievedLmcpMessageDynamicTask(receivedLmcpObject);
+        auto uniqueAutomationResponse = std::dynamic_pointer_cast<messages::task::UniqueAutomationResponse>(receivedLmcpObject);
+        for (auto missionCommand : uniqueAutomationResponse->getOriginalResponse()->getMissionCommandList())
+        {
+            if (!missionCommand->getWaypointList().empty())
+            {
+                auto finalWaypoint = missionCommand->getWaypointList().back();
+                m_vehicleIDVsSpeedAltitudePair[missionCommand->getVehicleID()] = std::pair<float, float>(finalWaypoint->getSpeed(), finalWaypoint->getAltitude());
+            }
+        }
     }
+
+    processRecievedLmcpMessageDynamicTask(receivedLmcpObject);
 
 
     return false;
@@ -310,8 +326,16 @@ std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calcu
     }
 
     afrl::cmasi::LoiterAction* surveyAction = new afrl::cmasi::LoiterAction;
-    surveyAction->setLocation(loc->clone());
-    surveyAction->getLocation()->setAltitude(config->getNominalAltitude());
+    auto locOverride = loc->clone();
+    if (m_vehicleIDVsSpeedAltitudePair.find(config->getID()) != m_vehicleIDVsSpeedAltitudePair.end())
+    {
+        locOverride->setAltitude(m_vehicleIDVsSpeedAltitudePair[config->getID()].second);
+    }
+    else
+    {
+        locOverride->setAltitude(config->getNominalAltitude());
+    }
+    surveyAction->setLocation(locOverride);
     surveyAction->setAirspeed(surveySpeed);
     surveyAction->setRadius(surveyRadius);
     surveyAction->setDirection(afrl::cmasi::LoiterDirection::CounterClockwise);

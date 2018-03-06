@@ -8,7 +8,7 @@
 // ===============================================================================
 
 /*
-* File:   Task_EscortTask.cpp
+* File:   DynamicTaskServiceBase.h
 * Author: colin
 */
 
@@ -80,6 +80,7 @@ private :
     std::unordered_map<int64_t, int64_t> m_entityIdVsLastWaypoint;
     std::unordered_map < int64_t, std::shared_ptr<VisiLibity::Polygon > > m_KeepOutZoneIDVsPolygon;
     std::unordered_map<int64_t, int64_t> m_vehicleIDVsOperatingRegion;
+    std::unordered_map<int64_t, std::pair<float, float>> m_vehicleIDVsSpeedAltitudePair;
 };
 }
 }
