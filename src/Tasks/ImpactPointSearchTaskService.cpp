@@ -390,6 +390,12 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
 
             auto action = m_pointSearchTask->getDesiredAction();
 
+            //make sure the action has this task associated with it.
+            if (std::find(action->getAssociatedTaskList().begin(), action->getAssociatedTaskList().end(), m_task->getTaskID()) == action->getAssociatedTaskList().end())
+            {
+                action->getAssociatedTaskList().push_back(m_task->getTaskID());
+            }
+
             uxas::common::utilities::CUnitConversions flatEarth;
             //remove waypoint inside the loiter action
             auto targetWaypont = taskImplementationResponse->getTaskWaypoints().back()->clone();
