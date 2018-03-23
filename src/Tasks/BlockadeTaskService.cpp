@@ -98,10 +98,10 @@ BlockadeTaskService::configureTask(const pugi::xml_node& ndComponent)
     } //isSuccessful
     if (isSuccessful)
     {
-		if (m_entityStates.find(m_blockadeTask->getBlockedEntityID()) != m_entityStates.end())
-		{
-			m_blockedEntityStateLast = m_entityStates[m_blockadeTask->getBlockedEntityID()];
-		}
+        if (m_entityStates.find(m_blockadeTask->getBlockedEntityID()) != m_entityStates.end())
+        {
+            m_blockedEntityStateLast = m_entityStates[m_blockadeTask->getBlockedEntityID()];
+        }
     } //if(isSuccessful)
     return (isSuccessful);
 }

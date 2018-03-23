@@ -96,10 +96,10 @@ MultiVehicleWatchTaskService::configureTask(const pugi::xml_node& ndComponent)
     } //isSuccessful
     if (isSuccessful)
     {
-		if (m_entityStates.find(m_MultiVehicleWatchTask->getWatchedEntityID()) != m_entityStates.end())
-		{
-			m_watchedEntityStateLast = m_entityStates[m_MultiVehicleWatchTask->getWatchedEntityID()];
-		}
+        if (m_entityStates.find(m_MultiVehicleWatchTask->getWatchedEntityID()) != m_entityStates.end())
+        {
+            m_watchedEntityStateLast = m_entityStates[m_MultiVehicleWatchTask->getWatchedEntityID()];
+        }
 
     } //if(isSuccessful)
     return (isSuccessful);

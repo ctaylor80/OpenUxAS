@@ -90,12 +90,12 @@ ImpactPointSearchTaskService::configureTask(const pugi::xml_node& ndComponent)
                     isSuccessful = false;
                 }
             }
-			if (m_pointSearchTask->getDesiredAction() == nullptr)
-			{
-			    sstrErrors << "ERROR:: **ImpactPointSearchTaskService::bConfigure PointOfInterest. Missing Loiter Action " << std::endl;
-			    CERR_FILE_LINE_MSG(sstrErrors.str())
-			    isSuccessful = false;
-			}
+            if (m_pointSearchTask->getDesiredAction() == nullptr)
+            {
+                sstrErrors << "ERROR:: **ImpactPointSearchTaskService::bConfigure PointOfInterest. Missing Loiter Action " << std::endl;
+                CERR_FILE_LINE_MSG(sstrErrors.str())
+                isSuccessful = false;
+            }
 
             for (auto koz : m_keepOutZones)
             {
@@ -304,7 +304,7 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
 
         //find standoff (start) location/
         n_FrameworkLib::CPosition position(m_pointSearchTask->getDesiredAction()->getLocation()->getLatitude() * n_Const::c_Convert::dDegreesToRadians(),
-			                               m_pointSearchTask->getDesiredAction()->getLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
+                                           m_pointSearchTask->getDesiredAction()->getLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
                                            0.0, 0.0);
         double newNorth_m = standoffDistance * cos(wedgeHeading_rad) + position.m_north_m;
         double newEast_m = standoffDistance * sin(wedgeHeading_rad) + position.m_east_m;
@@ -382,11 +382,11 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
 bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std::shared_ptr<uxas::messages::task::TaskImplementationResponse>& taskImplementationResponse, std::shared_ptr<TaskOptionClass>& taskOptionClass,
                                                                             int64_t& waypointId, std::shared_ptr<uxas::messages::route::RoutePlan>& route)
 {
-	//add the desired action, if any
-	if (!taskImplementationResponse->getTaskWaypoints().empty())
-	{
-		if (m_entityStates.find(taskImplementationResponse.get()->getVehicleID()) != m_entityStates.end())
-		{
+    //add the desired action, if any
+    if (!taskImplementationResponse->getTaskWaypoints().empty())
+    {
+        if (m_entityStates.find(taskImplementationResponse.get()->getVehicleID()) != m_entityStates.end())
+        {
 
             auto action = m_pointSearchTask->getDesiredAction();
 
@@ -443,26 +443,26 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
 
             taskImplementationResponse->getTaskWaypoints().push_back(newwp);
 
-			auto finalWaypoint = taskImplementationResponse->getTaskWaypoints().back();
+            auto finalWaypoint = taskImplementationResponse->getTaskWaypoints().back();
 
-			//set up a gimbal stare action
-			auto gimbalStareAction = std::make_shared<afrl::cmasi::GimbalStareAction>();
-			gimbalStareAction->setStarepoint(m_pointSearchTask->getSearchLocation()->clone());
-			if (m_entityConfigurations.find(taskImplementationResponse.get()->getVehicleID()) != m_entityConfigurations.end())
-			{
-				auto config = m_entityConfigurations[taskImplementationResponse.get()->getVehicleID()];
-				for (auto payload : config->getPayloadConfigurationList())
-				{
-					if (afrl::cmasi::isGimbalConfiguration(payload))
-					{
-						gimbalStareAction->setPayloadID(payload->getPayloadID());
-					}
-				}
-			}
-			finalWaypoint->getVehicleActionList().push_back(gimbalStareAction->clone());
-		}
-	}
-	return (false); // want the base class to build the response
+            //set up a gimbal stare action
+            auto gimbalStareAction = std::make_shared<afrl::cmasi::GimbalStareAction>();
+            gimbalStareAction->setStarepoint(m_pointSearchTask->getSearchLocation()->clone());
+            if (m_entityConfigurations.find(taskImplementationResponse.get()->getVehicleID()) != m_entityConfigurations.end())
+            {
+                auto config = m_entityConfigurations[taskImplementationResponse.get()->getVehicleID()];
+                for (auto payload : config->getPayloadConfigurationList())
+                {
+                    if (afrl::cmasi::isGimbalConfiguration(payload))
+                    {
+                        gimbalStareAction->setPayloadID(payload->getPayloadID());
+                    }
+                }
+            }
+            finalWaypoint->getVehicleActionList().push_back(gimbalStareAction->clone());
+        }
+    }
+    return (false); // want the base class to build the response
 }
 
 void ImpactPointSearchTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState)

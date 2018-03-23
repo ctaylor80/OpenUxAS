@@ -64,21 +64,21 @@ OverwatchTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
             m_watchTask = std::static_pointer_cast<afrl::impact::WatchTask>(m_task);
             if (!m_watchTask)
             {
-				UXAS_LOG_ERROR("**OverwatchTaskService::bConfigure failed to cast a WatchTask from the task pointer.");
+                UXAS_LOG_ERROR("**OverwatchTaskService::bConfigure failed to cast a WatchTask from the task pointer.");
                 isSuccessful = false;
             }
         }
         else
         {
-			UXAS_LOG_ERROR("**OverwatchTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a WatchTask.");
+            UXAS_LOG_ERROR("**OverwatchTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a WatchTask.");
             isSuccessful = false;
         }
     } //isSuccessful
 
-	if (m_entityStates.find(m_watchTask->getWatchedEntityID()) != m_entityStates.end())
-	{
-		m_watchedEntityStateLast = m_entityStates[m_watchTask->getWatchedEntityID()];
-	}
+    if (m_entityStates.find(m_watchTask->getWatchedEntityID()) != m_entityStates.end())
+    {
+        m_watchedEntityStateLast = m_entityStates[m_watchTask->getWatchedEntityID()];
+    }
     else
     {
         UXAS_LOG_ERROR("Overwatch Task ", m_watchTask->getTaskID(), " Watched Entity ID ", m_watchTask->getWatchedEntityID(), " Does Not Exist");

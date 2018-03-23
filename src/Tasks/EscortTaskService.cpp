@@ -80,22 +80,22 @@ EscortTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
             m_escortTask = std::static_pointer_cast<afrl::impact::EscortTask>(m_task);
             if (!m_escortTask)
             {
-				UXAS_LOG_ERROR("**EscortTaskService::bConfigure failed to cast a EscortTask from the task pointer.");
+                UXAS_LOG_ERROR("**EscortTaskService::bConfigure failed to cast a EscortTask from the task pointer.");
                 isSuccessful = false;
             }
         }
         else
         {
-			UXAS_LOG_ERROR("ERROR:: **EscortTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a EscortTask.");
+            UXAS_LOG_ERROR("ERROR:: **EscortTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a EscortTask.");
             isSuccessful = false;
         }
     } //isSuccessful
     if (isSuccessful)
     {
-		if (m_entityStates.find(m_escortTask->getSupportedEntityID()) != m_entityStates.end())
-		{
-			m_supportedEntityStateLast = m_entityStates[m_escortTask->getSupportedEntityID()];
-		}
+        if (m_entityStates.find(m_escortTask->getSupportedEntityID()) != m_entityStates.end())
+        {
+            m_supportedEntityStateLast = m_entityStates[m_escortTask->getSupportedEntityID()];
+        }
         else
         {
             UXAS_LOG_ERROR("Escort Task ", m_escortTask->getTaskID(), " supported entity ", m_escortTask->getSupportedEntityID(), " Does Not Exist");

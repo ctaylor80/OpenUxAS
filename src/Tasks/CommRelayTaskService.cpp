@@ -77,13 +77,13 @@ CommRelayTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
             m_CommRelayTask = std::static_pointer_cast<afrl::impact::CommRelayTask>(m_task);
             if (!m_CommRelayTask)
             {
-				UXAS_LOG_ERROR("**CommRelayTaskService::bConfigure failed to cast a CommRelayTask from the task pointer.");
+                UXAS_LOG_ERROR("**CommRelayTaskService::bConfigure failed to cast a CommRelayTask from the task pointer.");
                 isSuccessful = false;
             }
         }
         else
         {
-			UXAS_LOG_ERROR("**CommRelayTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a CommRelayTask.");
+            UXAS_LOG_ERROR("**CommRelayTaskService::bConfigure failed: taskObject[" + m_task->getFullLmcpTypeName() + "] is not a CommRelayTask.");
             isSuccessful = false;
         }
     } //isSuccessful

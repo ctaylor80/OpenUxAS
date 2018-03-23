@@ -618,7 +618,7 @@ void AssignmentTreeBranchBoundBase::calculateAssignment(std::unique_ptr<c_Node_B
             }
             auto newMessage = std::static_pointer_cast<avtas::lmcp::Object>(taskAssignmentSummary);
             sendSharedLmcpObjectBroadcastMessage(newMessage);
-			UXAS_LOG_INFORM("ASSIGNMENT COMPLETE!");
+            UXAS_LOG_INFORM("ASSIGNMENT COMPLETE!");
         }
         else
         {
@@ -952,7 +952,7 @@ void c_Node_Base::NodeAssignment(std::unique_ptr<c_VehicleAssignmentState>& vehi
         }
         else
         {
-	UXAS_LOG_ERROR("ASSIGNMENT_ERROR:: required prerequisite TaskOptionId[", prerequisiteTaskOptionId, "] not found");
+    UXAS_LOG_ERROR("ASSIGNMENT_ERROR:: required prerequisite TaskOptionId[", prerequisiteTaskOptionId, "] not found");
             m_staticAssignmentParameters->m_reasonsForNoAssignment << "ASSIGNMENT_ERROR:: required prerequisite TaskOptionId[" << prerequisiteTaskOptionId << "] not found!" << std::endl;
             isError = true;
         }

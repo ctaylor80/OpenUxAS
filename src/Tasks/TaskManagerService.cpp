@@ -73,7 +73,7 @@ TaskManagerService::ServiceBase::CreationRegistrar<TaskManagerService>
 TaskManagerService::s_registrar(TaskManagerService::s_registryServiceTypeNames());
 
 TaskManagerService::TaskManagerService()
-	: ServiceBase(TaskManagerService::s_typeName(), TaskManagerService::s_directoryName())
+    : ServiceBase(TaskManagerService::s_typeName(), TaskManagerService::s_directoryName())
 {
 }
 

@@ -49,7 +49,7 @@ OperatingRegionStateService::configure(const pugi::xml_node& serviceXmlNode)
     addSubscriptionAddress(afrl::cmasi::KeepInZone::Subscription);
     addSubscriptionAddress(afrl::cmasi::KeepOutZone::Subscription);
     addSubscriptionAddress(afrl::cmasi::RemoveZones::Subscription);
-	addSubscriptionAddress(afrl::impact::WaterZone::Subscription);
+    addSubscriptionAddress(afrl::impact::WaterZone::Subscription);
 
 
     m_region.reset(new afrl::cmasi::OperatingRegion);

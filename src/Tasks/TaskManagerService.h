@@ -157,7 +157,7 @@ private:
     /*! \brief this maps task IDs to service IDs, used to create and kill services */
     std::unordered_map<int64_t,int64_t> m_TaskIdVsServiceId;
     /*! \brief this is the string used to index options with no TaskType */
-	const std::string m_noTaskTypeString = std::string("NoTaskType");
+    const std::string m_noTaskTypeString = std::string("NoTaskType");
 
     int64_t m_automationRequestId = 1000;
 
