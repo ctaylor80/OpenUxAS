@@ -35,38 +35,6 @@
 #define STRING_XML_FAST_PLAN "FastPlan"
 #define STRING_XML_LANE_SPACING "LaneSpacing"
 
-// functor called for each permutation
-
-class f
-{
-    afrl::impact::TaskSummary* tsum;
-    afrl::impact::TaskSummary* orig;
-    std::vector<std::shared_ptr<afrl::impact::VehicleSummary> >& vehicles;
-    std::shared_ptr<afrl::impact::BatchSummaryResponse>& response;
-public:
-
-    explicit f(afrl::impact::TaskSummary* t,
-        std::vector<std::shared_ptr<afrl::impact::VehicleSummary> >& v,
-        std::shared_ptr<afrl::impact::BatchSummaryResponse>& r) : tsum(nullptr), orig(t), vehicles(v), response(r)
-    {
-    }
-
-    template <class It>
-    bool operator()(It first, It last) // called for each permutation
-    {
-        if (first != last)
-        {
-            tsum = orig->clone();
-            for (; first != last; first++)
-            {
-                tsum->getPerformingVehicles().push_back(vehicles.at(*first)->clone());
-            }
-            response->getSummaries().push_back(tsum);
-            tsum = nullptr;
-        }
-        return false;
-    }
-};
 
 namespace uxas
 {
@@ -120,7 +88,6 @@ bool
     // Primary messages for actual route construction
     addSubscriptionAddress(afrl::impact::BatchSummaryRequest::Subscription);
     addSubscriptionAddress(messages::task::TaskAutomationResponse::Subscription);
-    addSubscriptionAddress(messages::route::EgressRouteResponse::Subscription);
 
     return true; // may not have the proper fast plan value, but proceed anyway
 }
@@ -128,19 +95,7 @@ bool
 bool BatchSummaryService::processReceivedLmcpMessage(std::unique_ptr<uxas::communications::data::LmcpMessage> receivedLmcpMessage)
 //example: if (afrl::cmasi::isServiceStatus(receivedLmcpMessage->m_object.get()))
 {
-
-    if (uxas::messages::route::isEgressRouteResponse(receivedLmcpMessage->m_object.get()))
-    {
-        HandleEgressRouteResponse(std::static_pointer_cast<uxas::messages::route::EgressRouteResponse>(receivedLmcpMessage->m_object));
-    }
-    else if (afrl::impact::isCordonTask(receivedLmcpMessage->m_object.get()) ||
-        afrl::impact::isMultiVehicleWatchTask(receivedLmcpMessage->m_object.get()) ||
-        afrl::impact::isBlockadeTask(receivedLmcpMessage->m_object.get()))
-    {
-        auto task = std::static_pointer_cast<afrl::cmasi::Task>(receivedLmcpMessage->m_object);
-        m_multiVehicleTasks[task->getTaskID()] = task;
-    }
-    else if (afrl::impact::isBatchSummaryRequest(receivedLmcpMessage->m_object.get()))
+    if (afrl::impact::isBatchSummaryRequest(receivedLmcpMessage->m_object.get()))
     {
         HandleBatchSummaryRequest(std::static_pointer_cast<afrl::impact::BatchSummaryRequest>(receivedLmcpMessage->m_object));
     }
@@ -235,28 +190,6 @@ void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<mes
         m_batchSummaryRequestVsTaskAutomation.erase(finishedId);
     }
 }
-void BatchSummaryService::HandleEgressRouteResponse(std::shared_ptr<uxas::messages::route::EgressRouteResponse> egress)
-{
-    // ASSUME: receive back in order sent, FUTURE: add request/response IDs
-
-    bool found = false;
-    for (auto workingResponse = m_pendingTaskAutomationRequests.begin(); workingResponse != m_pendingTaskAutomationRequests.end(); workingResponse++)
-    {
-        //can only match tasks
-        auto tasks = workingResponse->second->getOriginalRequest()->getTaskList();
-        if (std::find(tasks.begin(), tasks.end(), egress->getResponseID()) != tasks.end())
-        {
-            found = true;
-        }
-    }
-    if (!found)
-    {
-        return; //not for a this. TODO: make sure it is really not for this 
-    }
-
-    m_egressPoints[egress->getResponseID()] = egress;
-    //}
-}
 
 bool BatchSummaryService::FinalizeBatchRequest(int64_t responseId)
 {
@@ -268,89 +201,9 @@ bool BatchSummaryService::FinalizeBatchRequest(int64_t responseId)
         return false;
     auto resp = m_workingResponse[responseId];
 
-
-    // at this point everything expected has been received, re-build summaries for multi-vehicle tasks
-    auto cleanResp = std::shared_ptr<afrl::impact::BatchSummaryResponse>(new afrl::impact::BatchSummaryResponse);
-    cleanResp->setResponseID(resp->getResponseID());
-    // add single vehicle task summaries and create list of multi-vehicle tasks to reason over
-    std::unordered_map<int64_t, std::vector<std::shared_ptr<afrl::impact::VehicleSummary> > > summariesByTask;
-
-    for (auto s : resp->getSummaries())
-    {
-        int64_t taskId = s->getTaskID();
-        //sort
-        std::sort(s->getPerformingVehicles().begin(), s->getPerformingVehicles().end(), [](const afrl::impact::VehicleSummary* x, const afrl::impact::VehicleSummary* y) { return x->getVehicleID() < y->getVehicleID(); });
-        if (m_multiVehicleTasks.find(taskId) == m_multiVehicleTasks.end())
-        {
-            // copy over the summary if it's a single vehicle task
-            cleanResp->getSummaries().push_back(s->clone());
-        }
-        else
-        {
-            // otherwise, add this task to the list of tasks to present as multi-vehicle
-            for (auto v : s->getPerformingVehicles())
-            {
-                summariesByTask[taskId].push_back(std::shared_ptr<afrl::impact::VehicleSummary>(v->clone()));
-            }
-        }
-    }
-
-
-    // multi-vehicle tasks include [cordon, multi-overwatch, blockade] only
-    for (auto t : summariesByTask)
-    {
-        if (m_multiVehicleTasks.find(t.first) != m_multiVehicleTasks.end())
-        {
-            if (afrl::impact::isCordonTask(m_multiVehicleTasks[t.first].get()))
-            {
-                // the egress points should exist here (checked earlier)
-                if (m_egressPoints.find(t.first) != m_egressPoints.end())
-                {
-                    int64_t N = m_egressPoints[t.first]->getNodeLocations().size();
-                    BuildSummaryOptions(t.first, cleanResp, t.second, N);
-                }
-            }
-            else if (afrl::impact::isBlockadeTask(m_multiVehicleTasks[t.first].get()))
-            {
-                auto blockTask = std::static_pointer_cast<afrl::impact::BlockadeTask>(m_multiVehicleTasks[t.first]);
-                int64_t N = blockTask->getNumberVehicles();
-                BuildSummaryOptions(t.first, cleanResp, t.second, N);
-            }
-            else if (afrl::impact::isMultiVehicleWatchTask(m_multiVehicleTasks[t.first].get()))
-            {
-                auto multiWatchTask = std::static_pointer_cast<afrl::impact::MultiVehicleWatchTask>(m_multiVehicleTasks[t.first]);
-                int64_t N = multiWatchTask->getNumberVehicles();
-                BuildSummaryOptions(t.first, cleanResp, t.second, N);
-            }
-            else // somehow it is a multi-vehicle task but of unknown type
-            {
-                // just add all the summaries and call it good
-                auto tsum = new afrl::impact::TaskSummary;
-                tsum->setTaskID(t.first);
-                for (auto v : t.second)
-                {
-                    tsum->getPerformingVehicles().push_back(v->clone());
-                }
-            }
-        }
-        else
-        {
-            // just add all the summaries and call it good
-            auto tsum = new afrl::impact::TaskSummary;
-            tsum->setTaskID(t.first);
-            for (auto v : t.second)
-            {
-                tsum->getPerformingVehicles().push_back(v->clone());
-            }
-            cleanResp->getSummaries().push_back(tsum->clone());
-        }
-    }
-
-
     // Finally re-constructed a full batch response, send along to global
-    std::shared_ptr<avtas::lmcp::Object> pResponse = std::static_pointer_cast<avtas::lmcp::Object>(cleanResp);
-    sendSharedLmcpObjectBroadcastMessage(pResponse);
-    IMPACT_INFORM("sent batch summary id ", cleanResp->getResponseID());
+    sendSharedLmcpObjectBroadcastMessage(resp);
+    IMPACT_INFORM("sent batch summary id ", resp->getResponseID());
 
     // clear out this working response from the map
     m_workingResponse.erase(responseId);
@@ -358,76 +211,6 @@ bool BatchSummaryService::FinalizeBatchRequest(int64_t responseId)
     return true;
 }
 
-void BatchSummaryService::BuildSummaryOptions(int64_t taskId, std::shared_ptr<afrl::impact::BatchSummaryResponse>& response,
-    std::vector<std::shared_ptr<afrl::impact::VehicleSummary> >& vehicles, int64_t N)
-{
-    auto scratchResponse = std::shared_ptr<afrl::impact::BatchSummaryResponse>(new afrl::impact::BatchSummaryResponse);
-    // 100% completion is achieved by having N vehicles on task
-    int64_t K = vehicles.size();
-    int64_t startN = K - 1; // start with max number of vehicles
-    if (startN >= N) // or max number of points
-    { // if starting at n=0, then all combinations from 1 .. K
-        startN = N - 1;
-    }
-    for (int64_t n = startN; n < N && n < K; n++)
-    {
-        auto tsum = new afrl::impact::TaskSummary;
-        tsum->setTaskID(taskId);
-        tsum->setBestEffort((n + 1.0) / N);
-        std::vector<int> v(K);
-        std::iota(v.begin(), v.end(), 0);
-        for_each_permutation<std::vector<int>::iterator, f>(v.begin(), v.begin() + (n + 1), v.end(), f(tsum, vehicles, scratchResponse));
-        delete tsum;
-    }
-
-    std::vector< std::tuple<int64_t, size_t, std::unordered_set<int64_t> > > combinations;
-    for (size_t r = 0; r < scratchResponse->getSummaries().size(); r++)
-    {
-        std::unordered_set<int64_t> scratch;
-        int64_t sumTime = 0;
-        for (auto v : scratchResponse->getSummaries().at(r)->getPerformingVehicles())
-        {
-            scratch.insert(v->getVehicleID());
-            sumTime += v->getTimeToArrive();
-        }
-
-        bool isInCombinations = false;
-        for (auto c : combinations)
-        {
-            bool isEquivalent = true;
-            for (auto e : scratch)
-            {
-                if (std::get<2>(c).find(e) == std::get<2>(c).end())
-                {
-                    isEquivalent = false;
-                    break;
-                }
-            }
-
-            if (isEquivalent)
-            {
-                isInCombinations = true;
-                // check update index/time
-                if (sumTime < std::get<0>(c))
-                {
-                    std::get<0>(c) = sumTime;
-                    std::get<1>(c) = r;
-                }
-                break;
-            }
-        }
-
-        if (!isInCombinations)
-        {
-            combinations.push_back(std::make_tuple(sumTime, r, scratch));
-        }
-    }
-
-    for (auto c : combinations)
-    {
-        response->getSummaries().push_back(scratchResponse->getSummaries().at(std::get<1>(c))->clone());
-    }
-}
 
 void BatchSummaryService::HandleBatchSummaryRequest(std::shared_ptr<afrl::impact::BatchSummaryRequest> request)
 {

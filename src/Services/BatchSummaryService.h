@@ -111,7 +111,6 @@ namespace uxas
             void HandleEgressRouteResponse(std::shared_ptr<uxas::messages::route::EgressRouteResponse>);
             void UpdateVehicleSummary(afrl::impact::VehicleSummary * vehicleSum);
             bool FinalizeBatchRequest(int64_t);
-            void BuildSummaryOptions(int64_t, std::shared_ptr<afrl::impact::BatchSummaryResponse>&, std::vector<std::shared_ptr<afrl::impact::VehicleSummary> >&, int64_t);
             void HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& object);
 
 
@@ -122,14 +121,9 @@ namespace uxas
             // storage
             std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::EntityState> > m_entityStates;
             std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::EntityConfiguration> > m_entityConfigs;
-            std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Task> > m_multiVehicleTasks;
             std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Location3D> > m_towerLocations;
             std::unordered_map<int64_t, std::pair<float, bool> > m_towerRanges;
 
-            //        task ID
-            std::deque<int64_t> m_pendingEgressRequests;
-            //                task ID
-            std::unordered_map<int64_t, std::shared_ptr<uxas::messages::route::EgressRouteResponse> > m_egressPoints;
 
             int64_t m_responseId = 1; // internal tracking of numerous batch requests
             int64_t m_taskAutomationRequestId = 1;
