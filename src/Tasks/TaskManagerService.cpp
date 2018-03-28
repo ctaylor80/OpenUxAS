@@ -454,7 +454,7 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
                     auto message = std::static_pointer_cast<avtas::lmcp::Object>(killServiceMessage);
                     sendSharedLmcpObjectBroadcastMessage(message);
                     m_TaskIdVsServiceId.erase(itServiceId);
-                    COUT_INFO_MSG("Removed Task[" << *itTaskId << "]")
+                    UXAS_LOG_INFORM("Removed Task[" << *itTaskId << "]")
                 }
                 else
                 {
