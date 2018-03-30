@@ -13,6 +13,9 @@
 */
 #include "DynamicTaskServiceBase.h"
 
+#define STRING_XML_THROTTLE "Throttle_ms"
+#define STRING_XML_LEAD_DISTANCE "LeadDistance_m"
+
 namespace uxas
 {
 namespace service
@@ -28,6 +31,23 @@ DynamicTaskServiceBase::DynamicTaskServiceBase(const std::string& typeName, cons
 
 bool DynamicTaskServiceBase::configureTask(const pugi::xml_node& serviceXmlNode)
 {
+    //check for taskOptions
+    pugi::xml_node taskOptions = serviceXmlNode.child(m_taskOptions_XmlTag.c_str());
+    if (taskOptions)
+    {
+        for (pugi::xml_node ndCurrent = taskOptions.first_child(); ndCurrent; ndCurrent = ndCurrent.next_sibling())
+        {
+            if (std::strcmp(ndCurrent.name(), STRING_XML_THROTTLE) == 0)
+            {
+                m_throttle_ms = std::stoi(ndCurrent.first_child().value());
+            }
+            if (std::strcmp(ndCurrent.name(), STRING_XML_LEAD_DISTANCE) == 0)
+            {
+                m_startPointLead_m = std::stoi(ndCurrent.first_child().value());
+            }
+        }
+    }
+
     addSubscriptionAddress(messages::route::RoutePlanResponse::Subscription);
 
     for (auto koz : m_keepOutZones)
