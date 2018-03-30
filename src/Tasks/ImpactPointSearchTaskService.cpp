@@ -397,6 +397,7 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
             }
 
             auto finalWaypoint = taskImplementationResponse->getTaskWaypoints().back();
+            action->getLocation()->setAltitude(finalWaypoint->getAltitude());
             finalWaypoint->getVehicleActionList().push_back(action->clone());
             finalWaypoint->setTurnType(afrl::cmasi::TurnType::TurnShort);
 
