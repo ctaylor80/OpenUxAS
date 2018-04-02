@@ -707,6 +707,16 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                                         if ((!isRouteFromLastToTask || m_isMakeTransitionWaypointsActive))
                                         {
                                             waypoint->getAssociatedTasks().push_back(m_task->getTaskID());
+
+                                            /*Assume route of size one returned the end location from the constraints. This means the start location of the
+                                            constraints is where this route starts and is also on task. Assume The previous waypoint matches the start 
+                                            location constraint and should be on task. 
+                                            */
+                                            if (plan.second->getWaypoints().size() == 1 && !taskImplementationResponse->getTaskWaypoints().empty())
+                                            {
+                                                taskImplementationResponse->getTaskWaypoints().back()->getAssociatedTasks().push_back(m_task->getTaskID());
+                                            }
+
                                         }
                                         taskImplementationResponse->getTaskWaypoints().push_back(waypoint);
                                         waypoint = nullptr; // gave up ownership

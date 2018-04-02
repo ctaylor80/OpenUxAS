@@ -529,7 +529,7 @@ namespace uxas
                     if (cPolygon.errFinalizePolygon(searchAreaBoundary) == n_FrameworkLib::CPolygon::errNoError)
                     {
 
-                        if (((eastMax_m - eastMin_m) / 2.0) < laneSpacing_m)
+                        if (((eastMax_m - eastMin_m) * 1.1) < laneSpacing_m)
                         {
                             currentAcrossValue_m = eastMin_m + (eastMax_m - eastMin_m) / 2.0;
                         }
