@@ -395,8 +395,21 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
             {
                 action->getAssociatedTaskList().push_back(m_task->getTaskID());
             }
+            auto state = m_entityStates[taskImplementationResponse.get()->getVehicleID()];
+            auto cast = static_cast<std::shared_ptr<avtas::lmcp::Object>>(state);
 
             auto finalWaypoint = taskImplementationResponse->getTaskWaypoints().back();
+            //hotfix for surface vehicles staying in place if the next waypoint has a loiter 
+            if (afrl::vehicles::isSurfaceVehicleState(cast))
+            {
+                auto newFinalWp = finalWaypoint->clone();
+                auto newFinalWaypointNumber = finalWaypoint->getNumber() + 1;
+                finalWaypoint->setNextWaypoint(newFinalWaypointNumber);
+                newFinalWp->setNumber(newFinalWaypointNumber);
+                newFinalWp->setNextWaypoint(newFinalWaypointNumber);
+                taskImplementationResponse->getTaskWaypoints().push_back(newFinalWp);
+                finalWaypoint = newFinalWp;
+            }
             action->getLocation()->setAltitude(finalWaypoint->getAltitude());
             finalWaypoint->getVehicleActionList().push_back(action->clone());
             finalWaypoint->setTurnType(afrl::cmasi::TurnType::TurnShort);

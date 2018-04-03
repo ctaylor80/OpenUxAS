@@ -28,6 +28,7 @@
 #include "uxas/messages/task/TaskImplementationRequest.h"
 #include "uxas/messages/route/RoutePlan.h"
 #include "afrl/cmasi/KeepOutZone.h"
+#include <afrl/vehicles/SurfaceVehicleState.h>
 #include "visilibity.h"
 
 #include <cstdint> // int64_t
