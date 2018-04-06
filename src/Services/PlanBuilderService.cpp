@@ -336,6 +336,7 @@ void PlanBuilderService::processTaskImplementationResponse(const std::shared_ptr
     else
     {
         //check overrides
+        //TODO: include loiters in altitude!
         for (auto requestID : m_reqeustIDVsOverrides)
         {
             for (auto speedAltPair : requestID.second)
@@ -348,6 +349,15 @@ void PlanBuilderService::processTaskImplementationResponse(const std::shared_ptr
                         wp->setAltitude(speedAltPair->getAltitude());
                         wp->setSpeed(speedAltPair->getSpeed());
                         wp->setAltitudeType(speedAltPair->getAltitudeType());
+
+                        for (auto action : wp->getVehicleActionList())
+                        {
+                            if (afrl::cmasi::isLoiterAction(action))
+                            {
+                                auto loiter = dynamic_cast<afrl::cmasi::LoiterAction*>(action);
+                                loiter->getLocation()->setAltitude(speedAltPair->getAltitude());
+                            }
+                        }
                     }
                 }
             }

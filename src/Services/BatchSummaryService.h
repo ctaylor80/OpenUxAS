@@ -116,7 +116,6 @@ namespace uxas
 
             // parameters
             bool m_fastPlan{ false };
-            float m_laneSpacing{ 300.0f };
 
             // storage
             std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::EntityState> > m_entityStates;
@@ -133,10 +132,7 @@ namespace uxas
             std::unordered_map<int64_t, std::shared_ptr<afrl::impact::BatchSummaryRequest> > m_workingRequests;
 
             std::unordered_map<int64_t, std::shared_ptr<messages::task::TaskAutomationRequest>> m_pendingTaskAutomationRequests;
-            std::unordered_map<int64_t, std::shared_ptr<messages::task::TaskAutomationResponse>> m_workingTaskAutomationResponses;
 
-            //                route id, response id
-            std::unordered_map<int64_t, int64_t> m_pendingRouteResponses;
             std::unordered_map<int64_t, std::shared_ptr<VisiLibity::Polygon> > m_keepOutZones;
 
 

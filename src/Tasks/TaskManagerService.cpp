@@ -443,6 +443,7 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
     else if (afrl::cmasi::isRemoveTasks(messageObject.get()))
     {
         auto removeTasks = std::static_pointer_cast<afrl::cmasi::RemoveTasks>(messageObject);
+        auto countBefore = m_TaskIdVsServiceId.size();
         for (auto itTaskId = removeTasks->getTaskList().begin(); itTaskId != removeTasks->getTaskList().end(); itTaskId++)
         {
                 auto itServiceId = m_TaskIdVsServiceId.find(*itTaskId);
@@ -461,6 +462,13 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
                     CERR_FILE_LINE_MSG("ERROR:: Tried to kill service, but could not find ServiceId for TaskId[" << *itTaskId << "]")
                 }
         }
+        std::string taskList = "[";
+        for (auto taskID : removeTasks->getTaskList())
+        {
+            taskList += std::to_string(taskID) + " ";
+        }
+        taskList += "]";
+        IMPACT_INFORM("Removed ", countBefore - m_TaskIdVsServiceId.size(), " tasks containing ", taskList, ". ", m_TaskIdVsServiceId.size(), " Still Exist.");
     }
     else
     {

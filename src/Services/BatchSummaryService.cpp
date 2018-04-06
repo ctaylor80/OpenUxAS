@@ -77,10 +77,6 @@ bool
     for (auto descendant : afrl::cmasi::EntityConfigurationDescendants())
         addSubscriptionAddress(descendant);
 
-// Tasks which are handled by this planner
-// track all tasks
-#define SUBSCRIBE_TO_TASKS
-#include "00_ServiceList.h"
 
     //assume all KOZs apply to all vehicles for checking conflictsWithROZ
     addSubscriptionAddress(afrl::cmasi::KeepOutZone::Subscription);
@@ -149,7 +145,8 @@ bool BatchSummaryService::processReceivedLmcpMessage(std::unique_ptr<uxas::commu
 void BatchSummaryService::HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& taskAutomationResponse)
 {
 
-    auto taskAutomationRequest = m_pendingTaskAutomationRequests.find(taskAutomationResponse->getResponseID())->second;
+    //auto taskAutomationRequest = m_pendingTaskAutomationRequests.find(taskAutomationResponse->getResponseID())->second;
+    m_pendingTaskAutomationRequests.erase(taskAutomationResponse->getResponseID());
 
     //remove pending task automation response. If any are empty, finalize
     std::list<int64_t> finishedIds;

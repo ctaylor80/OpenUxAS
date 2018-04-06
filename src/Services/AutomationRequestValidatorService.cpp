@@ -743,7 +743,7 @@ std::string AutomationRequestValidatorService::generateDescription(std::vector<i
     std::string vehiclesDesc = "[";
     for (auto vehicle : vehicles)
     {
-        vehiclesDesc += std::to_string(vehicle);
+        vehiclesDesc += std::to_string(vehicle) + " ";
     }
     vehiclesDesc += "]";
 
@@ -756,7 +756,7 @@ std::string AutomationRequestValidatorService::generateDescription(std::vector<i
         }
         else
         {
-            tasksDesc += std::to_string(task);
+            tasksDesc += "type not available " + std::to_string(task) + " ";
         }
     }
     tasksDesc += "]";
