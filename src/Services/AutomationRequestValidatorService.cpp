@@ -471,6 +471,18 @@ void AutomationRequestValidatorService::sendNextRequest()
     }
     
     auto uniqueAutomationRequest = m_pendingRequests.front();
+
+    //double check that tasks exist.
+    if (!std::all_of(uniqueAutomationRequest->getOriginalRequest()->getTaskList().begin(),
+        uniqueAutomationRequest->getOriginalRequest()->getTaskList().end(),
+        [&](const int64_t task) {return m_availableInitializedTasks.find(task) != m_availableInitializedTasks.end(); }))
+    {
+        sendResponseError(uniqueAutomationRequest, "Tasks were killed");
+        m_pendingRequests.pop_front();
+        sendNextRequest();
+        return;
+    }
+
     sendSharedLmcpObjectBroadcastMessage(uniqueAutomationRequest);
 
     auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
