@@ -751,7 +751,10 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                                     waypointLast->setNumber(newNumber);
                                     waypointLast->setNextWaypoint(newNumber);
                                     taskImplementationResponse->getTaskWaypoints().back()->setNextWaypoint(newNumber);
-                                    waypointLast->getAssociatedTasks().clear();
+									if (m_taskCompletes)
+									{
+										waypointLast->getAssociatedTasks().clear();
+									}
                                     taskImplementationResponse->getTaskWaypoints().push_back(waypointLast);
                                     waypointLast = nullptr;
 

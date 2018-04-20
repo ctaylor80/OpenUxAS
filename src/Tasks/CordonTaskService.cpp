@@ -126,7 +126,10 @@ CordonTaskService::ServiceBase::CreationRegistrar<CordonTaskService>
 CordonTaskService::s_registrar(CordonTaskService::s_registryServiceTypeNames());
 
 CordonTaskService::CordonTaskService()
-: TaskServiceBase(CordonTaskService::s_typeName(), CordonTaskService::s_directoryName()) { };
+: TaskServiceBase(CordonTaskService::s_typeName(), CordonTaskService::s_directoryName())
+{
+	m_taskCompletes = false;
+};
 
 CordonTaskService::~CordonTaskService() { };
 

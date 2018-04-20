@@ -397,6 +397,8 @@ namespace task
         /*! \brief indicates whether the waypoints from the last task to this one 
          * should be added to the active waypoints list (m_taskActiveWaypoints) */
         bool m_isMakeTransitionWaypointsActive{false};
+		/*! \brief indicates if TaskComplete messages should be expected. */
+		bool m_taskCompletes{true};
         /*! \brief all entities assigned to this task, that are currently actively
          * performing this task */
         std::unordered_set<int64_t> m_activeEntities;

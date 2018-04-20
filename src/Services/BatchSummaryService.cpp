@@ -402,7 +402,7 @@ void BatchSummaryService::UpdateTaskSummariesUtil(std::vector<afrl::impact::Task
         auto prevTask = 0;
         for (auto wpIter = missionCommand->getWaypointList().begin(); wpIter != missionCommand->getWaypointList().end(); wpIter++)
         {
-            if (!(*wpIter)->getAssociatedTasks().empty())
+            if (!(*wpIter)->getAssociatedTasks().empty() && *wpIter != missionCommand->getWaypointList().back())
             {
                 if (iteratingToTask) //found first waypoint on task
                 {
