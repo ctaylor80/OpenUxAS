@@ -15,6 +15,7 @@
 
 #define STRING_XML_THROTTLE "Throttle_ms"
 #define STRING_XML_LEAD_DISTANCE "LeadDistance_m"
+#define STRING_XML_TARGET_MOVEMENT_RECALCULATE_THRESHOLD "TargetMovementRecalculateThreshold_m"
 
 namespace uxas
 {
@@ -45,6 +46,10 @@ bool DynamicTaskServiceBase::configureTask(const pugi::xml_node& serviceXmlNode)
             {
                 m_startPointLead_m = std::stoi(ndCurrent.first_child().value());
             }
+			if (std::strcmp(ndCurrent.name(), STRING_XML_TARGET_MOVEMENT_RECALCULATE_THRESHOLD) == 0)
+			{
+				m_straightLineThreshold_m = std::stoi(ndCurrent.first_child().value());
+			}
         }
     }
 
@@ -240,6 +245,25 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
         }
 
         auto loc = calculateTargetLocation(entityState);
+
+		//check if the target has changed significantly
+	    if (m_targetLocations.find(entityState->getID()) != m_targetLocations.end())
+	    {
+			common::utilities::CUnitConversions flatEarth;
+			double north, east, prevNorth, prevEast;
+
+			auto prevLoc = m_targetLocations[entityState->getID()];
+			flatEarth.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
+			flatEarth.ConvertLatLong_degToNorthEast_m(prevLoc->getLatitude(), prevLoc->getLongitude(), prevNorth, prevEast);
+			auto distance = sqrt(pow(north - prevNorth, 2) + pow(east - prevEast, 2));
+			if (distance < m_straightLineThreshold_m)
+			{
+				return;
+			}
+	    }
+
+
+
         if (loc == nullptr)
         {
             return;
