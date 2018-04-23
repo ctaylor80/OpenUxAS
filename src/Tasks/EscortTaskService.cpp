@@ -153,6 +153,7 @@ bool EscortTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<av
         m_linesOfInterest[loi->getLineID()] = loi;
     }
     return (false); // always false implies never terminating service from here
+    int64_t optionId(TaskOptionClass::m_firstOptionId);
 }
 
 

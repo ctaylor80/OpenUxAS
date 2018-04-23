@@ -227,7 +227,7 @@ CordonTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::O
                 m_optionIdVsTaskOptionClass.clear();
 
                 int64_t locationId = 1;
-                int64_t optionId = 1;
+                int64_t optionId = TaskOptionClass::m_firstOptionId;
                 std::vector<int64_t> locationIds;
                 for (auto& location : egressRouteResponse->getNodeLocations())
                 {

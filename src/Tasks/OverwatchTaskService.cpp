@@ -100,6 +100,7 @@ OverwatchTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avta
             m_watchedEntityStateLast = entityState;
         }
     }
+    int64_t optionId(TaskOptionClass::m_firstOptionId);
 
     return (false); // always false implies never terminating service from here
 };

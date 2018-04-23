@@ -91,6 +91,7 @@
 
 // DO NOT REMOVE - USED TO AUTOMATICALLY ADD NEW TASK HEADERS
 #include "PayloadDropTaskService.h"
+#include "RendezvousTask.h"
 
 
 // test
@@ -113,6 +114,8 @@
 #include "RoutePlannerVisibilityService.h"
 
 // DO NOT REMOVE - USED TO AUTOMATICALLY ADD NEW SERVICE HEADERS
+#include "StatusReportService.h"
+#include "LoiterLeash.h"
 
 
 #endif  //UXAS_SERVICE_LIST_CODE_HEADERS
@@ -164,6 +167,7 @@
 
 // DO NOT REMOVE - USED TO AUTOMATICALLY ADD NEW TASK DUMMY INSTANCES
 {auto svc = uxas::stduxas::make_unique<uxas::service::task::PayloadDropTaskService>();}
+{auto svc = uxas::stduxas::make_unique<uxas::service::task::RendezvousTask>();}
 
 
 // test
@@ -186,6 +190,8 @@
 {auto svc = uxas::stduxas::make_unique<uxas::service::RoutePlannerVisibilityService>();}
 
 // DO NOT REMOVE - USED TO AUTOMATICALLY ADD NEW SERVICE DUMMY INSTANCES
+{auto svc = uxas::stduxas::make_unique<uxas::service::StatusReportService>();}
+{auto svc = uxas::stduxas::make_unique<uxas::service::LoiterLeash>();}
 
 
 #endif  //REGISTER_SERVICE_CODE
