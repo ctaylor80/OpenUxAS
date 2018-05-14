@@ -428,7 +428,8 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
                     }
                 }
             }
-            finalWaypoint->getVehicleActionList().push_back(gimbalStareAction->clone());
+			auto firstWaypoint = taskImplementationResponse->getTaskWaypoints().front();
+			firstWaypoint->getVehicleActionList().push_back(gimbalStareAction->clone());
         }
     }
     return (false); // want the base class to build the response
