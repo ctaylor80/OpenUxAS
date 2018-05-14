@@ -61,6 +61,7 @@ BlockadeTaskService::s_registrar(BlockadeTaskService::s_registryServiceTypeNames
 BlockadeTaskService::BlockadeTaskService()
 : TaskServiceBase(BlockadeTaskService::s_typeName(), BlockadeTaskService::s_directoryName())
 {
+    m_taskCompletes = false;
 };
 
 BlockadeTaskService::~BlockadeTaskService()

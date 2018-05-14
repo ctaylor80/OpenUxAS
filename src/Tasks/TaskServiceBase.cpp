@@ -272,14 +272,15 @@ bool TaskServiceBase::processReceivedLmcpMessage(std::unique_ptr<uxas::communica
             }
             else
             {
-                if (m_activeEntities.find(entityState->getID()) != m_activeEntities.end())
+                if (m_activeEntities.find(entityState->getID()) != m_activeEntities.end() && m_taskCompletes)
                 {
+
                     taskComplete(); // allow task to perform functions required at taskcomplete
                     // was active last state update, send taskcomplete message for this vehicle
                     m_activeEntities.erase(entityState->getID());
                     IMPACT_INFORM("Task ", m_task->getTaskID(), " complete for vehicle ", entityState->getID());
-                            // send out task complete - uxas
-                            auto taskCompleteUxas = std::make_shared<uxas::messages::task::TaskComplete>();
+                    // send out task complete - uxas
+                    auto taskCompleteUxas = std::make_shared<uxas::messages::task::TaskComplete>();
                     for (auto& assignedVehicleId : m_assignedVehicleIds)
                     {
                         taskCompleteUxas->getEntitiesInvolved().push_back(assignedVehicleId);

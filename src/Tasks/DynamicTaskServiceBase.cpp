@@ -27,6 +27,7 @@ DynamicTaskServiceBase::DynamicTaskServiceBase(const std::string& typeName, cons
     : TaskServiceBase(typeName, directoryName)
 {
     m_isMakeTransitionWaypointsActive = true;
+	m_taskCompletes = false;
 }
 
 
