@@ -41,8 +41,8 @@ ServiceBase::configureService(const std::string& parentOfWorkDirectory, const st
     pugi::xml_document xmlDoc;
     if (xmlDoc.load(serviceXml.c_str()))
     {
-        return (configureService(parentOfWorkDirectory, xmlDoc.root()));
-    }
+    	return (configureService(parentOfWorkDirectory, xmlDoc.root()));
+	}
 
     return false;
 };

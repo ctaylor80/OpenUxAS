@@ -20,8 +20,8 @@
 #include "UxAS_FileLogger.h"
 #include "UxAS_Log.h"
 #include "UxAS_LogManagerDefaultInitializer.h"
-
 #include "UxAS_StringUtil.h"
+
 #ifdef AFRL_INTERNAL_ENABLED
 //#include "UxAS_SerialPortEmulator.h"
 #endif

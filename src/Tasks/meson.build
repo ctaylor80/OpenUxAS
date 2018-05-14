@@ -1,6 +1,6 @@
 srcs_tasks = [
   'PayloadDropTaskService.cpp',
-	'RendezvousTask.cpp',
+  'RendezvousTask.cpp',
   '00_TaskTemplate.cpp',
   'AngledAreaSearchTaskService.cpp',
   'AssignmentCoordinatorTaskService.cpp',
@@ -26,18 +26,6 @@ srcs_tasks = [
   'DynamicTaskServiceBase.cpp'
 ]
 
-inc_3rd = include_directories('.')
-if get_option('internal_3rd_libraries')
-  inc_3rd = include_directories(
-      '../../3rd/cppzmq-4.2.2',
-      '../../3rd/zeromq-4.2.3/include',
-      '../../3rd/zyre-2.0.0/include',
-      '../../3rd/sqlite-amalgamation-3120200',
-      '../../3rd/SQLiteCpp-1.3.1/include',
-    )
-endif
-
-
 incs_tasks = [
   include_directories(
     '../../src/Includes',
@@ -48,14 +36,8 @@ incs_tasks = [
     '../../src/DPSS',
     '../../src/VisilibityLib',
   ),
-  inc_3rd,
   incs_lmcp,
 ]
-
-dep_3rd = []
-if get_option('internal_3rd_libraries')
-  dep_3rd = [dep_boost]
-endif
 
 if get_option('afrl_internal')
   incs_tasks += [incs_tasks_internal]
