@@ -473,8 +473,8 @@ void AutomationRequestValidatorService::sendNextRequest()
         uniqueAutomationRequest->getOriginalRequest()->getTaskList().end(),
         [&](const int64_t task) {return m_availableInitializedTasks.find(task) != m_availableInitializedTasks.end(); }))
     {
-        sendResponseError(uniqueAutomationRequest, "Tasks were killed");
         m_pendingRequests.pop_front();
+        sendResponseError(uniqueAutomationRequest, "Tasks were killed");
         sendNextRequest();
         return;
     }
