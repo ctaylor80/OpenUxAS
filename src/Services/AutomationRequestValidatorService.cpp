@@ -258,7 +258,6 @@ void AutomationRequestValidatorService::HandleAutomationRequest(std::shared_ptr<
 		m_sandboxMap[uniqueAutomationRequest->getRequestID()].solnId = sand->getSolutionID();
 		m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = sand->getSandbox();
 		m_sandboxMap[uniqueAutomationRequest->getRequestID()].taskRequestId = sand->getRequestID();
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].originalRequest = std::shared_ptr<afrl::cmasi::AutomationRequest>(sand->getTrialRequest()->clone());
 		uniqueAutomationRequest->setOriginalRequest(sand->getTrialRequest()->clone());
 		uniqueAutomationRequest->setSandBoxRequest(sand->getSandbox());
 		auto req = sand->getTrialRequest();
@@ -346,21 +345,54 @@ void AutomationRequestValidatorService::HandleAutomationResponse(std::shared_ptr
             sandResponse->setSandbox(m_sandboxMap[resp->getResponseID()].sandboxed);
             sandResponse->setResponseID(m_sandboxMap[resp->getResponseID()].taskRequestId);
 
-            //stub out task and vehicle summaries from missionCommands
-            for (auto task : m_sandboxMap[resp->getResponseID()].originalRequest->getTaskList())
+            //stub out task and vehicle summaries from missioncommands
+            for (auto missionCommand : resp->getOriginalResponse()->getMissionCommandList())
             {
-                auto taskSummary = std::make_shared<afrl::impact::TaskSummary>();
-                taskSummary->setTaskID(task);
-
-                for (auto vehicle : m_sandboxMap[resp->getResponseID()].originalRequest->getEntityList())
+                bool iteratingToTask = true;
+                auto workingTask = 0;
+                auto prevTask = 0;
+                for (auto wpIter = missionCommand->getWaypointList().begin(); wpIter != missionCommand->getWaypointList().end(); wpIter++)
                 {
-                    auto vehicleSummary = std::make_shared<afrl::impact::VehicleSummary>();
-                    vehicleSummary->setVehicleID(vehicle);
-                    vehicleSummary->setDestinationTaskID(task);
-                    taskSummary->getPerformingVehicles().push_back(vehicleSummary->clone());
+                    if (!(*wpIter)->getAssociatedTasks().empty() && *wpIter != missionCommand->getWaypointList().back())
+                    {
+                        if (iteratingToTask) //found first waypoint on task
+                        {
+                            iteratingToTask = false;
+                            prevTask = workingTask;
+                            workingTask = (*wpIter)->getAssociatedTasks().front();
+                        }
+                    }
+                    else
+                    {
+                        if (!iteratingToTask) //found last waypoint
+                        {
+                            iteratingToTask = true;
+                            
+                            //make task and vehicle summaries
+                            auto vehicleSummary = std::make_shared<afrl::impact::VehicleSummary>();
+                            vehicleSummary->setVehicleID(missionCommand->getVehicleID());
+                            vehicleSummary->setDestinationTaskID(workingTask);
+                            vehicleSummary->setInitialTaskID(prevTask);
+                        
+                            auto taskSummaryIter = std::find_if(sandResponse->getSummaries().begin(), sandResponse->getSummaries().end(), [&](const afrl::impact::TaskSummary* x) { return x->getTaskID() == workingTask; });
+                            afrl::impact::TaskSummary* taskSummary;
+                            if (taskSummaryIter == sandResponse->getSummaries().end())
+                            {
+                                taskSummary = new afrl::impact::TaskSummary();
+                                taskSummary->setTaskID(workingTask);
+                                sandResponse->getSummaries().push_back(taskSummary);
+                            }
+                            else
+                            {
+                                taskSummary = *taskSummaryIter;
+                            }
+                            
+                            taskSummary->getPerformingVehicles().push_back(vehicleSummary->clone());
+                        }
+                    }
                 }
-                sandResponse->getSummaries().push_back(taskSummary->clone());
             }
+
             //run it
             BatchSummaryService::UpdateTaskSummariesUtil(sandResponse->getSummaries(), resp->getOriginalResponse()->getMissionCommandList());
 
