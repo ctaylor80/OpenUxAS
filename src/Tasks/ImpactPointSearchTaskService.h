@@ -34,6 +34,7 @@
 #include <cstdint> // int64_t
 #include <unordered_set>
 #include <unordered_map>
+#include <BatchSummaryService.h>
 
 namespace uxas
 {
@@ -174,11 +175,11 @@ public: //virtual
                                                           int64_t& waypointId, std::shared_ptr<uxas::messages::route::RoutePlan>& route) override;
 
 private:
-    bool isCalculateOption(const int64_t& taskId, int64_t& optionId, const double& wedgeHeading_rad);
+    bool isCalculateOption(const int64_t entityID, const int64_t& taskId, int64_t& optionId, const double& wedgeHeading_rad);
 private:
     std::shared_ptr<afrl::impact::ImpactPointSearchTask> m_pointSearchTask;
     std::shared_ptr<afrl::impact::PointOfInterest> m_pointOfInterest;
-    std::unordered_map < int64_t, std::shared_ptr<VisiLibity::Polygon > > m_KeepOutZoneIDVsPolygon;
+    std::unordered_map < int64_t, std::shared_ptr< BatchSummaryService::ZonePair > > m_KeepOutZoneIDVsPolygon;
 };
 
 }; //namespace task

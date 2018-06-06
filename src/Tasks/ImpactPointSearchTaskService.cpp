@@ -36,7 +36,6 @@
 #include <avtas/lmcp/LmcpXMLReader.h>
 #include <BatchSummaryService.h>
 
-
 #define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "IMPCT_PS-IMPCT_PS-IMPCT_PS-IMPCT_PS:: ImpactPointSearch:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
 #define CERR_FILE_LINE_MSG(MESSAGE) std::cerr << "IMPCT_PS-IMPCT_PS-IMPCT_PS-IMPCT_PS:: ImpactPointSearch:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cerr.flush();
 
@@ -100,7 +99,10 @@ ImpactPointSearchTaskService::configureTask(const pugi::xml_node& ndComponent)
             for (auto koz : m_keepOutZones)
             {
                 auto poly = BatchSummaryService::FromAbstractGeometry(koz.second->getBoundary());
-                m_KeepOutZoneIDVsPolygon[koz.second->getZoneID()] = poly;
+                auto pair = std::make_shared<BatchSummaryService::ZonePair>();
+                pair->VisiLibityZone = poly;
+                pair->LmcpZone = std::shared_ptr<afrl::cmasi::KeepOutZone>(koz.second->clone());
+                m_KeepOutZoneIDVsPolygon[koz.second->getZoneID()] = pair;
             }
         }
         else
@@ -121,67 +123,73 @@ void ImpactPointSearchTaskService::buildTaskPlanOptions()
     int64_t taskId(m_pointSearchTask->getTaskID());
 
     auto standoffDistance = m_pointSearchTask->getStandoffDistance();
-    if (n_Const::c_Convert::bCompareDouble(standoffDistance, 0.0, n_Const::c_Convert::enLess))
+    for (auto eligibleEntities : m_speedAltitudeVsEligibleEntityIdsRequested)
     {
-        if (isCalculateOption(taskId, optionId, 0.0))
+        for (auto entityID : eligibleEntities.second)
         {
-            optionId++;
-        }
-    }
-    else
-    {
-        double wedgeDirectionIncrement(n_Const::c_Convert::dPiO8());
-
-        //ViewAngleList
-        if (!m_pointSearchTask->getViewAngleList().empty())
-        {
-            for (auto itWedge = m_pointSearchTask->getViewAngleList().begin();
-                    itWedge != m_pointSearchTask->getViewAngleList().end();
-                    itWedge++)
+            if (n_Const::c_Convert::bCompareDouble(standoffDistance, 0.0, n_Const::c_Convert::enLess))
             {
-                double dHeadingCenterline_rad = n_Const::c_Convert::dNormalizeAngleRad(((*itWedge)->getAzimuthCenterline() * n_Const::c_Convert::dDegreesToRadians()), 0.0);
-                //centerline angle is between 0 and 2PI
-                double dHeadingStart_rad = dHeadingCenterline_rad - ((*itWedge)->getAzimuthExtent() / 2.0) * n_Const::c_Convert::dDegreesToRadians();
-                double dHeadingEnd_rad = dHeadingCenterline_rad + ((*itWedge)->getAzimuthExtent() / 2.0) * n_Const::c_Convert::dDegreesToRadians();
-                double dHeadingCurrent_rad(dHeadingStart_rad);
-                double dHeadingTarget_rad = (n_Const::c_Convert::bCompareDouble(dHeadingEnd_rad, dHeadingStart_rad, n_Const::c_Convert::enGreaterEqual, 1.0e-5)) ? (dHeadingEnd_rad) : (n_Const::c_Convert::dTwoPi());
-                while (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, dHeadingCurrent_rad, n_Const::c_Convert::enGreaterEqual))
+                if (isCalculateOption(entityID, taskId, optionId, 0.0))
                 {
-                    if (isCalculateOption(taskId, optionId, dHeadingCurrent_rad))
-                    {
-                        optionId++;
-                    }
-                    dHeadingCurrent_rad += wedgeDirectionIncrement;
+                    optionId++;
                 }
-                //need to see if wedge straddles the 0/2PI direction
-                if ((!n_Const::c_Convert::bCompareDouble(dHeadingEnd_rad, dHeadingTarget_rad, n_Const::c_Convert::enEqual)) &&
-                        (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, n_Const::c_Convert::dTwoPi(), n_Const::c_Convert::enEqual)))
+            }
+            else
+            {
+                double wedgeDirectionIncrement(n_Const::c_Convert::dPiO8());
+
+                //ViewAngleList
+                if (!m_pointSearchTask->getViewAngleList().empty())
                 {
-                    dHeadingCurrent_rad = 0.0;
-                    dHeadingTarget_rad = dHeadingEnd_rad;
+                    for (auto itWedge = m_pointSearchTask->getViewAngleList().begin();
+                        itWedge != m_pointSearchTask->getViewAngleList().end();
+                        itWedge++)
+                    {
+                        double dHeadingCenterline_rad = n_Const::c_Convert::dNormalizeAngleRad(((*itWedge)->getAzimuthCenterline() * n_Const::c_Convert::dDegreesToRadians()), 0.0);
+                        //centerline angle is between 0 and 2PI
+                        double dHeadingStart_rad = dHeadingCenterline_rad - ((*itWedge)->getAzimuthExtent() / 2.0) * n_Const::c_Convert::dDegreesToRadians();
+                        double dHeadingEnd_rad = dHeadingCenterline_rad + ((*itWedge)->getAzimuthExtent() / 2.0) * n_Const::c_Convert::dDegreesToRadians();
+                        double dHeadingCurrent_rad(dHeadingStart_rad);
+                        double dHeadingTarget_rad = (n_Const::c_Convert::bCompareDouble(dHeadingEnd_rad, dHeadingStart_rad, n_Const::c_Convert::enGreaterEqual, 1.0e-5)) ? (dHeadingEnd_rad) : (n_Const::c_Convert::dTwoPi());
+                        while (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, dHeadingCurrent_rad, n_Const::c_Convert::enGreaterEqual))
+                        {
+                            if (isCalculateOption(entityID, taskId, optionId, dHeadingCurrent_rad))
+                            {
+                                optionId++;
+                            }
+                            dHeadingCurrent_rad += wedgeDirectionIncrement;
+                        }
+                        //need to see if wedge straddles the 0/2PI direction
+                        if ((!n_Const::c_Convert::bCompareDouble(dHeadingEnd_rad, dHeadingTarget_rad, n_Const::c_Convert::enEqual)) &&
+                            (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, n_Const::c_Convert::dTwoPi(), n_Const::c_Convert::enEqual)))
+                        {
+                            dHeadingCurrent_rad = 0.0;
+                            dHeadingTarget_rad = dHeadingEnd_rad;
+                            while (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, dHeadingCurrent_rad, n_Const::c_Convert::enGreaterEqual))
+                            {
+                                if (isCalculateOption(entityID, taskId, optionId, dHeadingCurrent_rad))
+                                {
+                                    optionId++;
+                                }
+                                dHeadingCurrent_rad += wedgeDirectionIncrement;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // no set wedge, so standoff from any angle
+                    double dHeadingCurrent_rad = 0.0;
+                    double dHeadingTarget_rad = n_Const::c_Convert::dTwoPi() - wedgeDirectionIncrement;
                     while (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, dHeadingCurrent_rad, n_Const::c_Convert::enGreaterEqual))
                     {
-                        if (isCalculateOption(taskId, optionId, dHeadingCurrent_rad))
+                        if (isCalculateOption(entityID, taskId, optionId, dHeadingCurrent_rad))
                         {
                             optionId++;
                         }
                         dHeadingCurrent_rad += wedgeDirectionIncrement;
                     }
                 }
-            }
-        }
-        else
-        {
-            // no set wedge, so standoff from any angle
-            double dHeadingCurrent_rad = 0.0;
-            double dHeadingTarget_rad = n_Const::c_Convert::dTwoPi() - wedgeDirectionIncrement;
-            while (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, dHeadingCurrent_rad, n_Const::c_Convert::enGreaterEqual))
-            {
-                if (isCalculateOption(taskId, optionId, dHeadingCurrent_rad))
-                {
-                    optionId++;
-                }
-                dHeadingCurrent_rad += wedgeDirectionIncrement;
             }
         }
     }
@@ -205,7 +213,7 @@ void ImpactPointSearchTaskService::buildTaskPlanOptions()
     }
 };
 
-bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int64_t& optionId, const double& wedgeHeading_rad)
+bool ImpactPointSearchTaskService::isCalculateOption(const int64_t entityID, const int64_t& taskId, int64_t& optionId, const double& wedgeHeading_rad)
 {
     bool isSuccessful{true};
 
@@ -216,68 +224,15 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
     auto startEndHeading_deg = n_Const::c_Convert::dNormalizeAngleRad((wedgeHeading_rad + n_Const::c_Convert::dPi()), 0.0) * n_Const::c_Convert::dRadiansToDegrees(); // [0,2PI) 
     taskOption->setStartHeading(startEndHeading_deg);
     taskOption->setEndHeading(startEndHeading_deg);
-    VisiLibity::Point newEnd;
-    bool newEndSet = false;
-    for (auto koz : m_KeepOutZoneIDVsPolygon)
+
+    auto bufferMultiplier = 1.5;
+
+    auto tmpLoc = std::shared_ptr<afrl::cmasi::Location3D>(m_pointSearchTask->getDesiredAction()->getLocation()->clone());
+    auto config = m_entityConfigurations.find(entityID) != m_entityConfigurations.end() ? m_entityConfigurations[entityID] : nullptr;
+    if (BatchSummaryService::AttemptMoveOutsideKoz(tmpLoc, m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier, config, m_KeepOutZoneIDVsPolygon))
     {
-        VisiLibity::Point p;
-        double north, east;
-        unitConversions.ConvertLatLong_degToNorthEast_m(m_pointSearchTask->getDesiredAction()->getLocation()->getLatitude(),
-                                                        m_pointSearchTask->getDesiredAction()->getLocation()->getLongitude(), north, east);
-        p.set_x(east);
-        p.set_y(north);
-
-        //use an extra offset to avoid jagged KOZs
-        auto bufferMultiplier = 1.5;
-
-        //check for point inside koz case
-        if (p.in(*koz.second))
-        {
-            UXAS_LOG_WARN("ImpactPointSearchTask Loiter Inside of KeepOutZone. Attempting to move point.");
-            //move the location outside the koz
-            auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
-            auto vector = VisiLibity::Point::normalize(bounderyPoint - p) * m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier;
-            newEnd = bounderyPoint + vector;
-            newEndSet = true;
-
-            break;
-        }
-        afrl::cmasi::Polygon *poly = new afrl::cmasi::Polygon();
-        auto length = m_pointSearchTask->getDesiredAction()->getRadius();
-        for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
-        {
-            double lat_deg, lon_deg;
-            
-            unitConversions.ConvertNorthEast_mToLatLong_deg(north + length * sin(rad), east + length * cos(rad), lat_deg, lon_deg);
-            auto loc = new afrl::cmasi::Location3D();
-            loc->setLatitude(lat_deg);
-            loc->setLongitude(lon_deg);
-            poly->getBoundaryPoints().push_back(loc);
-        }
-        auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
-
-        //check if loiter intersects the perimiter of the koz case
-        if ( loiterArea->n() > 0 && koz.second->n() > 0 &&
-            boundary_distance(*loiterArea, *koz.second) < .1)
-        {
-            UXAS_LOG_WARN("ImpactPointSearchTask Loiter Intersects KeepOutZone. Attempting to move point.");
-            //move the location outside the koz
-            auto bounderyPoint = p.projection_onto_boundary_of(*koz.second);
-            //the loiter center point is outside of the koz because of the checks above
-            auto vector = VisiLibity::Point::normalize(p - bounderyPoint) * m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier;
-            newEnd = bounderyPoint + vector;
-            newEndSet = true;
-
-            break;
-        }
-    }
-    if (newEndSet)
-    {
-        double latitude_deg(0.0);
-        double longitude_deg(0.0);
-        unitConversions.ConvertNorthEast_mToLatLong_deg(newEnd.y(), newEnd.x(), latitude_deg, longitude_deg);
-        m_pointSearchTask->getDesiredAction()->getLocation()->setLatitude(latitude_deg);
-        m_pointSearchTask->getDesiredAction()->getLocation()->setLongitude(longitude_deg);
+        UXAS_LOG_WARN("ImpactPointSearchTask Loiter Inside of KeepOutZone. Attempted to move point.");
+        m_pointSearchTask->getDesiredAction()->setLocation(tmpLoc->clone());
     }
 
 
@@ -288,9 +243,7 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t& taskId, int6
         //taskOption->setCost();    // defaults to 0.0
         taskOption->setStartLocation(m_pointSearchTask->getDesiredAction()->getLocation()->clone());
         taskOption->setEndLocation(m_pointSearchTask->getDesiredAction()->getLocation()->clone());
-        for (auto itEligibleEntities : m_speedAltitudeVsEligibleEntityIdsRequested)
-            for (auto id : itEligibleEntities.second)
-                taskOption->getEligibleEntities().push_back(id);
+        taskOption->getEligibleEntities().push_back(entityID);
         taskOption->setCost(0);
         auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
         m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));

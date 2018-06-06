@@ -59,7 +59,10 @@ bool DynamicTaskServiceBase::configureTask(const pugi::xml_node& serviceXmlNode)
     for (auto koz : m_keepOutZones)
     {
         auto poly = BatchSummaryService::FromAbstractGeometry(koz.second->getBoundary());
-        m_KeepOutZoneIDVsPolygon[koz.second->getZoneID()] = poly;
+        auto pair = std::make_shared<BatchSummaryService::ZonePair>();
+        pair->VisiLibityZone = poly;
+        pair->LmcpZone = std::shared_ptr<afrl::cmasi::KeepOutZone>(koz.second->clone());
+        m_KeepOutZoneIDVsPolygon[koz.second->getZoneID()] = pair;
     }
 
     addSubscriptionAddress(afrl::cmasi::KeepOutZone::Subscription);
@@ -90,7 +93,7 @@ void DynamicTaskServiceBase::buildTaskPlanOptions()
             {
                 auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
                 auto radius = loiterRadiusFromConfig(airVehicleConfig);
-                AttemptMoveOutsideKoz(targetLocation, radius * 1.5, 0);
+                BatchSummaryService::AttemptMoveOutsideKoz(targetLocation, radius * 1.5, config, m_KeepOutZoneIDVsPolygon);
             }
             auto taskOption = new uxas::messages::task::TaskOption;
             taskOption->setTaskID(taskId);
@@ -188,7 +191,10 @@ bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avta
     {
         auto koz = std::dynamic_pointer_cast<afrl::cmasi::KeepOutZone>(receivedLmcpObject);
         auto poly = BatchSummaryService::FromAbstractGeometry(koz->getBoundary());
-        m_KeepOutZoneIDVsPolygon[koz->getZoneID()] = poly;
+        auto pair = std::make_shared<BatchSummaryService::ZonePair>();
+        pair->VisiLibityZone = poly;
+        pair->LmcpZone = std::shared_ptr<afrl::cmasi::KeepOutZone>(koz->clone());
+        m_KeepOutZoneIDVsPolygon[koz->getZoneID()] = pair;
     }
     else if (afrl::cmasi::isOperatingRegion(receivedLmcpObject))
     {
@@ -279,7 +285,7 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
             //use an extra offset to avoid jagged KOZs
             auto bufferMultiplier = 1.5;
             auto loiterRadius = loiterRadiusFromConfig(airVehicleConfig);
-            AttemptMoveOutsideKoz(loc, loiterRadius * bufferMultiplier, 0);
+            BatchSummaryService::AttemptMoveOutsideKoz(loc, loiterRadius * bufferMultiplier, config, m_KeepOutZoneIDVsPolygon);
         }
 
         m_targetLocations[entityState->getID()] = loc;
@@ -403,81 +409,6 @@ double DynamicTaskServiceBase::loiterRadiusFromConfig(std::shared_ptr<afrl::cmas
         return radius;
     }
 
-void DynamicTaskServiceBase::AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, int64_t operatingRegion)
-{
-    if (m_OperatingRegions.find(operatingRegion) == m_OperatingRegions.end())
-    {
-        return;
-    }
-
-    uxas::common::utilities::CUnitConversions unitConversions;
-    VisiLibity::Point newEnd;
-    bool newEndSet = false;
-    auto targetOperatingRegion = m_OperatingRegions[operatingRegion];
-    for (auto kozID : targetOperatingRegion->getKeepOutAreas())
-    {
-        if (m_KeepOutZoneIDVsPolygon.find(kozID) == m_KeepOutZoneIDVsPolygon.end())
-        {
-            continue;
-        }
-        auto koz = m_KeepOutZoneIDVsPolygon[kozID];
-
-        VisiLibity::Point p;
-        double north, east;
-        unitConversions.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
-        p.set_x(east);
-        p.set_y(north);
-
-
-
-        //check for point inside koz case
-        if (p.in(*koz))
-        {
-            //move the location outside the koz
-            auto bounderyPoint = p.projection_onto_boundary_of(*koz);
-            auto vector = VisiLibity::Point::normalize(bounderyPoint - p) * offset;
-            newEnd = bounderyPoint + vector;
-            newEndSet = true;
-
-            break;
-        }
-        afrl::cmasi::Polygon *poly = new afrl::cmasi::Polygon();
-        auto length = offset;
-        for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
-        {
-            double lat_deg, lon_deg;
-
-            unitConversions.ConvertNorthEast_mToLatLong_deg(north + length * sin(rad), east + length * cos(rad), lat_deg, lon_deg);
-            auto loc = new afrl::cmasi::Location3D();
-            loc->setLatitude(lat_deg);
-            loc->setLongitude(lon_deg);
-            poly->getBoundaryPoints().push_back(loc);
-        }
-        auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
-
-        //check if loiter intersects the perimiter of the koz case
-        if (loiterArea->n() > 0 && koz->n() > 0 &&
-            boundary_distance(*loiterArea, *koz) < .1)
-        {
-            //move the location outside the koz
-            auto bounderyPoint = p.projection_onto_boundary_of(*koz);
-            //the loiter center point is outside of the koz because of the checks above
-            auto vector = VisiLibity::Point::normalize(p - bounderyPoint) * offset;
-            newEnd = bounderyPoint + vector;
-            newEndSet = true;
-
-            break;
-        }
-    }
-    if (newEndSet)
-    {
-        double latitude_deg(0.0);
-        double longitude_deg(0.0);
-        unitConversions.ConvertNorthEast_mToLatLong_deg(newEnd.y(), newEnd.x(), latitude_deg, longitude_deg);
-        loc->setLatitude(latitude_deg);
-        loc->setLongitude(longitude_deg);
-    }
-}
 }
 }
 }

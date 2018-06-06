@@ -74,11 +74,10 @@ private :
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc);
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, std::shared_ptr<afrl::cmasi::Location3D> loc);
     double loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> config);
-    void AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, int64_t operatingRegion);
     
     std::unordered_map<int64_t, int64_t> m_throttle;
     std::unordered_map<int64_t, int64_t> m_entityIdVsLastWaypoint;
-    std::unordered_map < int64_t, std::shared_ptr<VisiLibity::Polygon > > m_KeepOutZoneIDVsPolygon;
+    std::unordered_map < int64_t, std::shared_ptr<BatchSummaryService::ZonePair > > m_KeepOutZoneIDVsPolygon;
     std::unordered_map<int64_t, int64_t> m_vehicleIDVsOperatingRegion;
     std::unordered_map<int64_t, std::pair<float, float>> m_vehicleIDVsSpeedAltitudePair;
 };

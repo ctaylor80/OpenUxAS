@@ -77,10 +77,17 @@ namespace uxas
             virtual
                 ~BatchSummaryService();
 
+            struct ZonePair
+            {
+                std::shared_ptr<VisiLibity::Polygon> VisiLibityZone;
+                std::shared_ptr<afrl::cmasi::AbstractZone> LmcpZone;
+            };
+
             static void UpdateSummaryUtil(afrl::impact::VehicleSummary * sum, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_begin, const std::vector<afrl::cmasi::Waypoint*>::iterator& task_end);
             static void UpdateTaskSummariesUtil(std::vector<afrl::impact::TaskSummary*> taskSummaries, std::vector<afrl::cmasi::MissionCommand*> missions);
             static std::shared_ptr<VisiLibity::Polygon> FromAbstractGeometry(afrl::cmasi::AbstractGeometry* geom);
             static bool LinearizeBoundary(afrl::cmasi::AbstractGeometry* boundary, std::shared_ptr<VisiLibity::Polygon>& poly);
+            static bool AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, std::shared_ptr<afrl::cmasi::EntityConfiguration> config, std::unordered_map < int64_t, std::shared_ptr< BatchSummaryService::ZonePair > > KozPairs);
 
         private:
 
@@ -105,7 +112,6 @@ namespace uxas
 
 
         private:
-
 
             void HandleBatchSummaryRequest(std::shared_ptr<afrl::impact::BatchSummaryRequest>);
             void HandleEgressRouteResponse(std::shared_ptr<uxas::messages::route::EgressRouteResponse>);
@@ -133,7 +139,7 @@ namespace uxas
 
             std::unordered_map<int64_t, std::shared_ptr<messages::task::TaskAutomationRequest>> m_pendingTaskAutomationRequests;
 
-            std::unordered_map<int64_t, std::shared_ptr<VisiLibity::Polygon> > m_keepOutZones;
+            std::unordered_map<int64_t, std::shared_ptr<ZonePair> > m_keepOutZones;
 
 
         };

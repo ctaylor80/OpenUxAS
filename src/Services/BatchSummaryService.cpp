@@ -28,6 +28,7 @@
 #include <map>
 #include <numeric>
 #include <uxas/messages/task/TaskPlanOptions.h>
+#include <Polygon.h>
 
 #define STRING_COMPONENT_NAME "BatchSummary"
 #define STRING_XML_COMPONENT_TYPE STRING_COMPONENT_NAME
@@ -134,10 +135,13 @@ bool BatchSummaryService::processReceivedLmcpMessage(std::unique_ptr<uxas::commu
        }
        else if (afrl::cmasi::isKeepOutZone(receivedLmcpMessage->m_object))
        {
-           auto koz = std::static_pointer_cast<afrl::cmasi::KeepOutZone>(receivedLmcpMessage->m_object);
+           auto koz = std::static_pointer_cast<afrl::cmasi::AbstractZone>(receivedLmcpMessage->m_object);
            auto poly = FromAbstractGeometry(koz->getBoundary());
 
-           m_keepOutZones[koz->getZoneID()] = poly;
+           auto pair = std::make_shared<ZonePair>();
+           pair->VisiLibityZone = poly;
+           pair->LmcpZone = koz;
+           m_keepOutZones[koz->getZoneID()] = pair;
        }
        return (false); // always false implies never terminating service from here
 }
@@ -445,6 +449,7 @@ void BatchSummaryService::UpdateVehicleSummary(afrl::impact::VehicleSummary * ve
 
 
     double north, east;
+    auto config = m_entityConfigs[vehicleSum->getVehicleID()];
     //check conflicts with ROZ. Assume individual waypoints came from planner and do not conflict. Attached actions might.
     for (auto wp : vehicleSum->getWaypointList())
     {
@@ -457,19 +462,20 @@ void BatchSummaryService::UpdateVehicleSummary(afrl::impact::VehicleSummary * ve
                 unitConversions.ConvertLatLong_degToNorthEast_m(loiter->getLocation()->getLatitude(), loiter->getLocation()->getLongitude(), north, east);
                 auto length = loiter->getRadius();
                 //assume circular
-                for (auto koz : m_keepOutZones)
+                auto locTmp = std::shared_ptr<afrl::cmasi::Location3D>(loiter->getLocation()->clone());
+                
+                //check each zone one at a time to know the conflicting ROZ IDs.
+                for (auto keepOutZonePairIt : m_keepOutZones)
                 {
-                    for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
+                    std::unordered_map<int64_t, std::shared_ptr<ZonePair>> tmp;
+                    tmp[keepOutZonePairIt.second->LmcpZone->getZoneID()] = keepOutZonePairIt.second;
+                    if (AttemptMoveOutsideKoz(locTmp, length, config, tmp))
                     {
-                        p.set_x(east + length * cos(rad));
-                        p.set_y(north + length * sin(rad));
-                        if (p.in(*koz.second, 1e-4))
-                        {
-                            vehicleSum->setConflictsWithROZ(true);
-                            break;
-                        }
+                        vehicleSum->setConflictsWithROZ(true);
+                        vehicleSum->getROZIDs().push_back(keepOutZonePairIt.second->LmcpZone->getZoneID());
                     }
                 }
+
             }
         }
     }
@@ -633,6 +639,84 @@ bool BatchSummaryService::LinearizeBoundary(afrl::cmasi::AbstractGeometry* bound
     }
 
     return isValid;
+}
+
+bool BatchSummaryService::AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, std::shared_ptr<afrl::cmasi::EntityConfiguration> config, std::unordered_map < int64_t, std::shared_ptr< BatchSummaryService::ZonePair > > kozPairs)
+{
+    uxas::common::utilities::CUnitConversions unitConversions;
+    VisiLibity::Point newEnd;
+    bool newEndSet = false;
+    for (auto kozID : kozPairs)
+    {
+        //enforce altitude ranges.
+        auto lmcpZone = kozID.second->LmcpZone;
+        auto epsilon = 1e-3;
+        if (config != nullptr && 
+            (lmcpZone->getMaxAltitude() > config->getNominalAltitude() || lmcpZone->getMinAltitude() < config->getNominalAltitude()) &&
+            !(abs(lmcpZone->getMaxAltitude()) < epsilon && abs(lmcpZone->getMinAltitude()) < epsilon))
+        {
+            continue;
+        }
+
+        auto koz = kozID.second;
+
+        VisiLibity::Point p;
+        double north, east;
+        unitConversions.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
+        p.set_x(east);
+        p.set_y(north);
+
+
+
+        //check for point inside koz case
+        if (p.in(*koz->VisiLibityZone))
+        {
+            //move the location outside the koz
+            auto bounderyPoint = p.projection_onto_boundary_of(*koz->VisiLibityZone);
+            auto vector = VisiLibity::Point::normalize(bounderyPoint - p) * offset;
+            newEnd = bounderyPoint + vector;
+            newEndSet = true;
+
+            break;
+        }
+        afrl::cmasi::Polygon *poly = new afrl::cmasi::Polygon();
+        auto length = offset;
+        for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
+        {
+            double lat_deg, lon_deg;
+
+            unitConversions.ConvertNorthEast_mToLatLong_deg(north + length * sin(rad), east + length * cos(rad), lat_deg, lon_deg);
+            auto loc = new afrl::cmasi::Location3D();
+            loc->setLatitude(lat_deg);
+            loc->setLongitude(lon_deg);
+            poly->getBoundaryPoints().push_back(loc);
+        }
+        auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
+
+        //check if loiter intersects the perimiter of the koz case
+        if (loiterArea->n() > 0 && koz->VisiLibityZone->n() > 0 &&
+            boundary_distance(*loiterArea, *koz->VisiLibityZone) < .1)
+        {
+            //move the location outside the koz
+            auto bounderyPoint = p.projection_onto_boundary_of(*koz->VisiLibityZone);
+            //the loiter center point is outside of the koz because of the checks above
+            auto vector = VisiLibity::Point::normalize(p - bounderyPoint) * offset;
+            newEnd = bounderyPoint + vector;
+            newEndSet = true;
+
+            break;
+        }
+    }
+    if (newEndSet)
+    {
+        double latitude_deg(0.0);
+        double longitude_deg(0.0);
+        unitConversions.ConvertNorthEast_mToLatLong_deg(newEnd.y(), newEnd.x(), latitude_deg, longitude_deg);
+        loc->setLatitude(latitude_deg);
+        loc->setLongitude(longitude_deg);
+        return true;
+    }
+    return false;
 }
 
 
