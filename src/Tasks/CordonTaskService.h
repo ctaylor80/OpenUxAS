@@ -26,6 +26,7 @@
 
 #include <cstdint> // int64_t
 #include <unordered_map>
+#include <uxas/messages/route/EgressRouteResponse.h>
 
 namespace uxas
 {
@@ -129,6 +130,8 @@ public:
 
 
     virtual void buildTaskPlanOptions() override;
+    virtual bool isProcessTaskImplementationRouteResponse(std::shared_ptr<uxas::messages::task::TaskImplementationResponse>& taskImplementationResponse, std::shared_ptr<TaskOptionClass>& taskOptionClass,
+        int64_t& waypointId, std::shared_ptr<uxas::messages::route::RoutePlan>& route) override;
 
     /** \class PairHash
      * 
@@ -157,14 +160,16 @@ public:
 private:
 
     std::unordered_map<std::pair<int64_t, int64_t>, int64_t, PairHashInt64> m_vehicleIdNodeIdVsOptionId;
-
+    void buildTaskPlanOptionsAfterEgressResponses();
     void calculateOption(const std::vector<int64_t>& eligibleEntities,
             afrl::cmasi::Location3D* location, int64_t& locationId, int64_t& optionId);
     std::string calculateCompositionString(std::vector<int64_t>& locationIds, std::vector<int64_t>& vehicleIds);
 
+
 private:
     std::shared_ptr<afrl::impact::CordonTask> m_cordonTask;
-
+    std::shared_ptr<messages::route::EgressRouteResponse> m_egressRouteResponse;
+    std::set<int64_t> m_vehiclesUsed;
 };
 
 }; //namespace task

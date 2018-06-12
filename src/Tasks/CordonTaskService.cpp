@@ -216,34 +216,13 @@ CordonTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::O
     }
     else
     {
-        auto currentAutomationRequest = m_idVsUniqueAutomationRequest[m_latestUniqueAutomationRequestId];
         if (uxas::messages::route::isEgressRouteResponse(receivedLmcpObject))
         {
             auto egressRouteResponse = std::static_pointer_cast<uxas::messages::route::EgressRouteResponse>(receivedLmcpObject);
             if (egressRouteResponse->getResponseID() == m_task->getTaskID())
             {
-                // set/reset task plan options
-                m_taskPlanOptions->setTaskID(m_task->getTaskID());
-                m_optionIdVsTaskOptionClass.clear();
-
-                int64_t locationId = 1;
-                int64_t optionId = TaskOptionClass::m_firstOptionId;
-                std::vector<int64_t> locationIds;
-                for (auto& location : egressRouteResponse->getNodeLocations())
-                {
-                    for (auto itEligibleEntities = m_speedAltitudeVsEligibleEntityIdsRequested.begin(); itEligibleEntities != m_speedAltitudeVsEligibleEntityIdsRequested.end(); itEligibleEntities++)
-                    {
-                        calculateOption(itEligibleEntities->second, location, locationId, optionId);
-                    }
-                    locationIds.push_back(locationId);
-                    locationId++;
-                }
-
-                // calculate composition string
-                std::string compositionString = calculateCompositionString(locationIds, currentAutomationRequest->getOriginalRequest()->getEntityList());
-                m_taskPlanOptions->setComposition(compositionString);
-                std::shared_ptr<avtas::lmcp::Object> pOptions = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
-                sendSharedLmcpObjectBroadcastMessage(pOptions);
+                m_egressRouteResponse = egressRouteResponse;
+                buildTaskPlanOptionsAfterEgressResponses();
             }
         }
     }
@@ -274,14 +253,64 @@ std::string CordonTaskService::calculateCompositionString(std::vector<int64_t>& 
 
 void CordonTaskService::buildTaskPlanOptions()
 {
+    //we expect the road network to stay the same. egress routes should not change.
     // build an 'egress route request' from the ground planner (external)
-    auto egressRequest = std::shared_ptr<uxas::messages::route::EgressRouteRequest>(new uxas::messages::route::EgressRouteRequest);
-    egressRequest->setRequestID(m_cordonTask->getTaskID());
-    egressRequest->setStartLocation(m_cordonTask->getCordonLocation()->clone());
-    egressRequest->setRadius(m_cordonTask->getStandoffDistance());
-    std::shared_ptr<avtas::lmcp::Object> pRequest = std::static_pointer_cast<avtas::lmcp::Object>(egressRequest);
-    sendSharedLmcpObjectBroadcastMessage(pRequest);
-};
+    if (m_egressRouteResponse == nullptr)
+    {
+        auto egressRequest = std::shared_ptr<uxas::messages::route::EgressRouteRequest>(new uxas::messages::route::EgressRouteRequest);
+        egressRequest->setRequestID(m_cordonTask->getTaskID());
+        egressRequest->setStartLocation(m_cordonTask->getCordonLocation()->clone());
+        egressRequest->setRadius(m_cordonTask->getStandoffDistance());
+        std::shared_ptr<avtas::lmcp::Object> pRequest = std::static_pointer_cast<avtas::lmcp::Object>(egressRequest);
+        sendSharedLmcpObjectBroadcastMessage(pRequest);
+    }
+    else
+    {
+        buildTaskPlanOptionsAfterEgressResponses();
+    }
+
+}
+
+bool CordonTaskService::isProcessTaskImplementationRouteResponse(std::shared_ptr<uxas::messages::task::TaskImplementationResponse>& taskImplementationResponse, std::shared_ptr<TaskOptionClass>& taskOptionClass,
+    int64_t& waypointId, std::shared_ptr<uxas::messages::route::RoutePlan>& route)
+{
+    m_vehiclesUsed.insert(taskImplementationResponse->getVehicleID());
+    return false;
+}
+void CordonTaskService::buildTaskPlanOptionsAfterEgressResponses()
+{
+    auto currentAutomationRequest = m_idVsUniqueAutomationRequest[m_latestUniqueAutomationRequestId];
+
+    // set/reset task plan options
+    m_taskPlanOptions->setTaskID(m_task->getTaskID());
+    m_optionIdVsTaskOptionClass.clear();
+    m_vehicleIdNodeIdVsOptionId.clear();
+
+    int64_t locationId = 1;
+    int64_t optionId = TaskOptionClass::m_firstOptionId;
+    std::vector<int64_t> locationIds;
+    std::set<int64_t> entitiesToUse;
+    for (auto elegibleEntity : m_speedAltitudeVsEligibleEntityIdsRequested)
+    {
+        entitiesToUse.insert(elegibleEntity.second.begin(), elegibleEntity.second.end());
+    }
+    entitiesToUse.insert(m_vehiclesUsed.begin(), m_vehiclesUsed.end());
+    std::vector<int64_t> entitesToUseAsVecter(entitiesToUse.begin(), entitiesToUse.end());
+
+    for (auto& location : m_egressRouteResponse->getNodeLocations())
+    {
+        calculateOption(entitesToUseAsVecter, location, locationId, optionId);
+        locationIds.push_back(locationId);
+        locationId++;
+    }
+
+    // calculate composition string
+    std::string compositionString = calculateCompositionString(locationIds, entitesToUseAsVecter);
+    m_taskPlanOptions->setComposition(compositionString);
+    std::shared_ptr<avtas::lmcp::Object> pOptions = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
+    sendSharedLmcpObjectBroadcastMessage(pOptions);
+}
+
 
 void CordonTaskService::calculateOption(const std::vector<int64_t>& eligibleEntities,
                                         afrl::cmasi::Location3D* location, int64_t& locationId, int64_t& optionId)
