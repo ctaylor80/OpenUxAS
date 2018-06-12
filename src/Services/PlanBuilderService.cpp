@@ -159,16 +159,14 @@ void PlanBuilderService::processTaskAssignmentSummary(const std::shared_ptr<uxas
         sendError(message);
         return;
     }
-    
-    if (taskAssignmentSummary->getTaskList().empty())
+
+    std::set<int64_t> assignedVehicles;
+    for (auto taskSummary : taskAssignmentSummary->getTaskList())
     {
-        std::string message = "No assignments found for request " + std::to_string(taskAssignmentSummary->getCorrespondingAutomationRequestID());
-        sendError(message);
-        return;
+        assignedVehicles.insert(taskSummary->getAssignedVehicle());
     }
-    
     // ensure that a valid state for each vehicle in the request has been received
-    for(auto v : correspondingAutomationRequest->getOriginalRequest()->getEntityList())
+    for(auto v : assignedVehicles)
     {
         auto found = m_currentEntityStates.find(v);
         if(found == m_currentEntityStates.end())
@@ -187,16 +185,9 @@ void PlanBuilderService::processTaskAssignmentSummary(const std::shared_ptr<uxas
     m_inProgressResponse[taskAssignmentSummary->getCorrespondingAutomationRequestID()] = std::make_shared<uxas::messages::task::UniqueAutomationResponse>();
     m_inProgressResponse[taskAssignmentSummary->getCorrespondingAutomationRequestID()]->setResponseID(taskAssignmentSummary->getCorrespondingAutomationRequestID());
     
-    // list all participating vehicles in the assignment
-    std::vector<int64_t> participatingVehicles = correspondingAutomationRequest->getOriginalRequest()->getEntityList();
-    if(participatingVehicles.empty())
-    {
-        for(auto v: m_currentEntityStates)
-            participatingVehicles.push_back(v.first);
-    }
     
     // load current participating vehicle states into projected state tracking
-    for(auto vID : participatingVehicles)
+    for(auto vID : assignedVehicles)
     {
         auto entityState = m_currentEntityStates.find(vID)->second; // ensured to exist by above validation check
         auto projectedState = std::make_shared<ProjectedState>();

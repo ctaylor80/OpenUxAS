@@ -239,12 +239,26 @@ void RouteAggregatorService::BuildMatrixRequests(int64_t reqId, const std::share
             areq->getOriginalRequest()->getEntityList().push_back(entity.second->getID());
         }
     }
+    std::set<int64_t> elegibleEntities(areq->getOriginalRequest()->getEntityList().begin(), areq->getOriginalRequest()->getEntityList().end());
+    //check all options for other entities
+    for (auto taskId : areq->getOriginalRequest()->getTaskList())
+    {
+        if (m_taskOptions.find(taskId) != m_taskOptions.end())
+        {
+            for (auto option : m_taskOptions[taskId]->getOptions())
+            {
+                for (auto entity : option->getEligibleEntities())
+                {
+                    elegibleEntities.insert(entity);
+                }
+            }
+        }
+    }
 
     // to minimize network traffic make a separate request for each vehicle
-    for (size_t v = 0; v < areq->getOriginalRequest()->getEntityList().size(); v++)
+    for (auto vehicleId : elegibleEntities)
     {
         // only check vehicles that have valid states
-        int64_t vehicleId = areq->getOriginalRequest()->getEntityList().at(v);
         auto vehicle = m_entityStates.find(vehicleId);
 
         float startHeading_deg{0.0};
