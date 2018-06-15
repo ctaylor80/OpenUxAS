@@ -434,12 +434,14 @@ void AutomationRequestValidatorService::OnTasksReadyTimeout()
         std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_requestsWaitingForTasks.front();
         m_requestsWaitingForTasks.pop_front();
 
-        std::stringstream reasonForFailure;
-        reasonForFailure << "- automation request ID[" << timedOut->getRequestID() << "] was not able to properly initialize all requested tasks" << std::endl;
-
-        auto id = timedOut->getRequestID();
-        m_timedOutRequests.insert(id);
-        sendResponseError(timedOut, reasonForFailure.str());
+        //Send to self. This will execute on the ZMQ processing thread
+        auto err = std::make_shared<afrl::cmasi::ServiceStatus>();
+        err->setStatusType(afrl::cmasi::ServiceStatusType::Error);
+        auto kvp = new afrl::cmasi::KeyValuePair();
+        kvp->setKey("No UniqueAutomationResponse");
+        kvp->setValue("Task Init Timout. Automaiton request ID [" + std::to_string(timedOut->getRequestID()) + "] was not able to properly initialize all requested tasks");
+        err->getInfo().push_back(kvp);
+        m_messageSender.sendSharedLimitedCastMessage(m_entityIdNetworkIdUnicastString, err);
     }
 }
 
@@ -475,7 +477,7 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
             auto sandResponse = std::shared_ptr<afrl::impact::ImpactAutomationResponse>(new afrl::impact::ImpactAutomationResponse);
             sandResponse->setPlayID(m_sandboxMap[reqID].playId);
             sandResponse->setSolutionID(m_sandboxMap[reqID].solnId);
-            sandResponse->setSandbox(false);
+            sandResponse->setSandbox(m_sandboxMap[reqID].sandboxed);
             sandResponse->setResponseID(m_sandboxMap[reqID].taskRequestId);
             sandResponse->setTrialResponse(errorResponse->clone());
             sendSharedLmcpObjectBroadcastMessage(sandResponse);
