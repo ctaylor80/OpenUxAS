@@ -108,87 +108,102 @@ bool task::PayloadDropTaskService::processReceivedLmcpMessageTask(std::shared_pt
 
 void PayloadDropTaskService::buildTaskPlanOptions()
 {
-    double wedgeDirectionIncrement(n_Const::c_Convert::dPiO8());
 
     auto optionId = 1;
-    //approach from any angle
     for (auto itEligibleEntities : m_speedAltitudeVsEligibleEntityIdsRequested)
     {
         for (auto entityId : itEligibleEntities.second)
         {
-            auto taskOption = new uxas::messages::task::TaskOption;
-            taskOption->getEligibleEntities().push_back(entityId);
-            taskOption->setTaskID(m_payloadDrop->getTaskID());
-            taskOption->setOptionID(optionId);
+            std::vector<float> approches(m_payloadDrop->getApproachAngle().begin(), m_payloadDrop->getApproachAngle().end());
 
-            double dropLocationNorth_m, dropLocationEast_m, BDALocationNorth_m, BDALocationEast_m;
-            double dropLocationLat_deg, dropLocationLon_deg, DBALocationLat_deg, BDALocationLon_deg;
-            uxas::common::utilities::CUnitConversions unitConversions;
-
-            auto config = m_entityConfigurations.find(entityId)->second;
-            auto cast = static_cast<std::shared_ptr<avtas::lmcp::Object>>(config);
-            if (!afrl::cmasi::isAirVehicleConfiguration(cast))
+            if (approches.empty())
             {
-                //implicitly only allow air vehicles
-                continue;
+                double wedgeDirectionIncrement(n_Const::c_Convert::dPiO8());
+                double dHeadingCurrent_rad = 0.0;
+                double dHeadingTarget_rad = n_Const::c_Convert::dTwoPi() - wedgeDirectionIncrement;
+                while (n_Const::c_Convert::bCompareDouble(dHeadingTarget_rad, dHeadingCurrent_rad, n_Const::c_Convert::enGreaterEqual))
+                {
+                    approches.push_back(dHeadingCurrent_rad);
+                    dHeadingCurrent_rad += wedgeDirectionIncrement;
+                }
             }
-            auto airVehicleConfig = std::dynamic_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(cast);
-            double runway_m = getLevelTurnRadius(airVehicleConfig);
 
-            auto dropLocation = m_payloadDrop->getDropLocation()->clone();
-            auto BDALocation = m_payloadDrop->getBDALocation()->clone();
-            unitConversions.ConvertLatLong_degToNorthEast_m(dropLocation->getLatitude(), dropLocation->getLongitude(), dropLocationNorth_m, dropLocationEast_m);
-            unitConversions.ConvertLatLong_degToNorthEast_m(BDALocation->getLatitude(), BDALocation->getLongitude(), BDALocationNorth_m, BDALocationEast_m);
+            for (auto approach : approches)
+            {
+                auto taskOption = new uxas::messages::task::TaskOption;
+                taskOption->getEligibleEntities().push_back(entityId);
+                taskOption->setTaskID(m_payloadDrop->getTaskID());
+                taskOption->setOptionID(optionId);
 
-            auto dHeadingTarget_rad = n_Const::c_Convert::dPiO2() - atan2(dropLocationNorth_m - BDALocationNorth_m, dropLocationEast_m - BDALocationEast_m);
-            dHeadingTarget_rad = n_Const::c_Convert::dNormalizeAngleRad((dHeadingTarget_rad + n_Const::c_Convert::dPi()), 0.0) * n_Const::c_Convert::dRadiansToDegrees(); // [0,2PI) 
-            taskOption->setStartHeading(dHeadingTarget_rad);
-            taskOption->setEndHeading(dHeadingTarget_rad);
+                double dropLocationNorth_m, dropLocationEast_m, BDALocationNorth_m, BDALocationEast_m;
+                double dropLocationLat_deg, dropLocationLon_deg, DBALocationLat_deg, BDALocationLon_deg;
+                uxas::common::utilities::CUnitConversions unitConversions;
 
-            taskOption->setStartLocation(dropLocation->clone());
+                auto config = m_entityConfigurations.find(entityId)->second;
+                auto cast = static_cast<std::shared_ptr<avtas::lmcp::Object>>(config);
+                if (!afrl::cmasi::isAirVehicleConfiguration(cast))
+                {
+                    //implicitly only allow air vehicles
+                    continue;
+                }
+                auto airVehicleConfig = std::dynamic_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(cast);
+                double runway_m = getLevelTurnRadius(airVehicleConfig);
 
-            taskOption->setEndLocation(BDALocation->clone());
+                //auto dropLocation = m_payloadDrop->getDropLocation()->clone();
+                auto BDALocation = m_payloadDrop->getBDALocation()->clone();
+                //unitConversions.ConvertLatLong_degToNorthEast_m(dropLocation->getLatitude(), dropLocation->getLongitude(), dropLocationNorth_m, dropLocationEast_m);
+                //unitConversions.ConvertLatLong_degToNorthEast_m(BDALocation->getLatitude(), BDALocation->getLongitude(), BDALocationNorth_m, BDALocationEast_m);
 
-            auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
-            auto taskOptionClass = std::make_shared<TaskOptionClass>(pTaskOption);
+                //auto dHeadingTarget_rad = n_Const::c_Convert::dPiO2() - atan2(dropLocationNorth_m - BDALocationNorth_m, dropLocationEast_m - BDALocationEast_m);
+                //dHeadingTarget_rad = n_Const::c_Convert::dNormalizeAngleRad((dHeadingTarget_rad + n_Const::c_Convert::dPi()), 0.0) * n_Const::c_Convert::dRadiansToDegrees(); // [0,2PI) 
+                taskOption->setStartHeading(approach);
+                taskOption->setEndHeading(approach);
 
-            BDALocationNorth_m += sin(dHeadingTarget_rad) * runway_m;
-            BDALocationEast_m += cos(dHeadingTarget_rad) * runway_m;
+                taskOption->setStartLocation(BDALocation->clone());
 
-            unitConversions.ConvertNorthEast_mToLatLong_deg(BDALocationNorth_m, BDALocationEast_m, DBALocationLat_deg, BDALocationLon_deg);
+                taskOption->setEndLocation(BDALocation->clone());
 
-            auto loiterPoint = new afrl::cmasi::Location3D();
-            loiterPoint->setLatitude(DBALocationLat_deg);
-            loiterPoint->setLongitude(BDALocationLon_deg);
+                auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
+                auto taskOptionClass = std::make_shared<TaskOptionClass>(pTaskOption);
 
-            //add a routePlanRequest
-            auto routePlanRequest = std::make_shared<messages::route::RoutePlanRequest>();
-            routePlanRequest->setRequestID(getOptionIdFromRouteId(optionId));
-            routePlanRequest->setAssociatedTaskID(m_task->getTaskID());
-            routePlanRequest->setIsCostOnlyRequest(true);
-            //TODO: operating region
-            //routePlanRequest->setOperatingRegion(currentAutomationRequest->getOriginalRequest()->getOperatingRegion()) 
-            routePlanRequest->setVehicleID(entityId);
+                BDALocationNorth_m += sin(approach) * runway_m;
+                BDALocationEast_m += cos(approach) * runway_m;
 
-            //add a constraint to be on the loiter from the payload drop
-            auto entryConstraint = std::make_shared<messages::route::RouteConstraints>();
-            entryConstraint->setStartLocation(dropLocation->clone());
-            entryConstraint->setStartHeading(dHeadingTarget_rad);
-            entryConstraint->setEndLocation(loiterPoint);
-            entryConstraint->setEndHeading(dHeadingTarget_rad);
+                unitConversions.ConvertNorthEast_mToLatLong_deg(BDALocationNorth_m, BDALocationEast_m, DBALocationLat_deg, BDALocationLon_deg);
 
-            routePlanRequest->getRouteRequests().push_back(entryConstraint->clone());
+                auto loiterPoint = new afrl::cmasi::Location3D();
+                loiterPoint->setLatitude(DBALocationLat_deg);
+                loiterPoint->setLongitude(BDALocationLon_deg);
 
-            taskOptionClass->m_routePlanRequest = routePlanRequest;
+                //add a routePlanRequest
+                auto routePlanRequest = std::make_shared<messages::route::RoutePlanRequest>();
+                routePlanRequest->setRequestID(getOptionIdFromRouteId(optionId));
+                routePlanRequest->setAssociatedTaskID(m_task->getTaskID());
+                routePlanRequest->setIsCostOnlyRequest(true);
+                //TODO: operating region
+                //routePlanRequest->setOperatingRegion(currentAutomationRequest->getOriginalRequest()->getOperatingRegion()) 
+                routePlanRequest->setVehicleID(entityId);
 
-            m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, taskOptionClass));
-            m_taskPlanOptions->getOptions().push_back(taskOption);
-            taskOption = nullptr; //just gave up ownership
+                //add a constraint to be on the loiter from the payload drop
+                auto entryConstraint = std::make_shared<messages::route::RouteConstraints>();
+                entryConstraint->setStartLocation(BDALocation->clone());
+                entryConstraint->setStartHeading(approach);
+                entryConstraint->setEndLocation(loiterPoint);
+                entryConstraint->setEndHeading(approach);
+
+                routePlanRequest->getRouteRequests().push_back(entryConstraint->clone());
+
+                taskOptionClass->m_routePlanRequest = routePlanRequest;
+
+                m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, taskOptionClass));
+                m_taskPlanOptions->getOptions().push_back(taskOption);
+                taskOption = nullptr; //just gave up ownership
 
 
 
 
-            optionId++;
+                optionId++;
+            }
         }
     }
 
