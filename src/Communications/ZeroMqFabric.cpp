@@ -31,7 +31,7 @@ ZeroMqFabric::getInstance()
     if (!ZeroMqFabric::s_instance)
     {
         s_instance.reset(new ZeroMqFabric);
-        s_instance->m_zmqContext = uxas::stduxas::make_unique<zmq::context_t>(1);
+        s_instance->m_zmqContext = uxas::stduxas::make_unique<zmq::context_t>(1, 1024 * 5);
     }
 
     return *s_instance;
@@ -60,6 +60,7 @@ std::unique_ptr<zmq::socket_t>
 ZeroMqFabric::createSocket(ZeroMqSocketConfiguration& socketConfiguration)
 {
     std::unique_ptr<zmq::socket_t> zmqSocket = uxas::stduxas::make_unique<zmq::socket_t>(*m_zmqContext, socketConfiguration.m_zmqSocketType);
+    
     if (socketConfiguration.m_isServerBind)
     {
         zmqSocket->bind(socketConfiguration.m_socketAddress.c_str());
