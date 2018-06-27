@@ -150,6 +150,18 @@ bool BatchSummaryService::processReceivedLmcpMessage(std::unique_ptr<uxas::commu
 		   auto areaTask = std::static_pointer_cast<afrl::impact::AngledAreaSearchTask>(receivedLmcpMessage->m_object);
 		   m_AngledAreaSearchTaskIdToAreaOfInterest[areaTask->getTaskID()] = areaTask->getSearchAreaID();
 	   }
+	   else if (afrl::impact::isAreaOfInterest(receivedLmcpMessage->m_object))
+	   {
+		   auto areaOfInterest = std::static_pointer_cast<afrl::impact::AreaOfInterest>(receivedLmcpMessage->m_object);
+		   auto id = areaOfInterest->getAreaID();
+		   for (auto it = m_AngledAreaSearchTaskIdToAreaOfInterest.begin(); it != m_AngledAreaSearchTaskIdToAreaOfInterest.end();)
+		   {
+			   if (it->second == id)
+				   it = m_AngledAreaSearchTaskIdToAreaOfInterest.erase(it);
+			   else
+				   ++it;
+		   }
+	   }
        return (false); // always false implies never terminating service from here
 }
 
