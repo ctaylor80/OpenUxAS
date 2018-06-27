@@ -30,6 +30,7 @@
 #include "afrl/cmasi/GimbalState.h"
 #include "afrl/cmasi/GimbalAngleAction.h"
 #include "afrl/impact/SpeedAltPair.h"
+#include "afrl/impact/ImpactAutomationRequest.h"
 
 #include <cstdint> // int64_t
 #include <deque>
@@ -134,7 +135,10 @@ private:
     
     bool sendNextTaskImplementationRequest(int64_t uniqueRequestID);
     void checkNextTaskImplementationRequest(int64_t uniqueRequestID);
-    void AddLoitersToMissionCommands(std::shared_ptr<uxas::messages::task::UniqueAutomationResponse> response);
+	void sendUniqueAutomationResponse(int64_t uniqueRequestID);
+    void addLoitersToMissionCommands(std::shared_ptr<uxas::messages::task::UniqueAutomationResponse> response);
+	void addBacktrackToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response);
+	void addReturnToFirstWaypointToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response);
     /*! \brief  nested class for tracking projected state of an entity during the plan building process */
     class ProjectedState {
     public:
@@ -172,7 +176,7 @@ private:
     std::unordered_map< int64_t, std::shared_ptr<afrl::cmasi::EntityState> > m_currentEntityStates;
 
     std::unordered_map< int64_t, std::list<std::shared_ptr<afrl::impact::SpeedAltPair>>> m_reqeustIDVsOverrides;
-
+	std::unordered_map<int64_t, std::shared_ptr<afrl::impact::ImpactAutomationRequest>> m_requestIDVsImpactRequest;
     /*! \brief  this stores the next unique ID to be used when requesting task
      *          implementations. Incremented by one after use. */
     int64_t m_taskImplementationId{1};
