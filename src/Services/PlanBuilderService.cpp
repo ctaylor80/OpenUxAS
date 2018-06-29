@@ -131,11 +131,20 @@ PlanBuilderService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
 	{
 		auto routeResponse = std::static_pointer_cast<messages::route::RoutePlanResponse>(receivedLmcpMessage->m_object);
 		auto uniqueRequestID = routeResponse->getResponseID();
-		auto uniqueAutomationResponse = m_inProgressResponse[uniqueRequestID];
+		auto uniqueAutomationResponseIter = m_inProgressResponse.find(uniqueRequestID);
 
-		if (uniqueAutomationResponse->getOriginalResponse()->getMissionCommandList().empty() || routeResponse->getRouteResponses().empty())
+		if (uniqueAutomationResponseIter == m_inProgressResponse.end() ||
+			uniqueAutomationResponseIter->second == nullptr)
+		{
+			IMPACT_INFORM("PlanBuilder. UniqueAutomationResponse unexpectedly not constructed!");
 			return false;
-		auto firstMiss = uniqueAutomationResponse->getOriginalResponse()->getMissionCommandList().front();
+		}
+
+		if (uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().empty() ||
+			routeResponse->getRouteResponses().empty())
+			return false;
+
+		auto firstMiss = uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().front();
 		auto firstRoutes = routeResponse->getRouteResponses().front();
 
 		for (auto wp : firstRoutes->getWaypoints())
@@ -629,7 +638,7 @@ void PlanBuilderService::addReturnToFirstWaypointToMissionCommands(std::shared_p
 	routePlanRequest->setIsCostOnlyRequest(false);
 
     auto constraints = std::make_shared<messages::route::RouteConstraints>();
-    constraints->setStartLocation(first->clone());
+    constraints->setStartLocation(first->clone()); 
 	for (auto wp : firstMish->getWaypointList())
 	{
 		if (!wp->getAssociatedTasks().empty())
