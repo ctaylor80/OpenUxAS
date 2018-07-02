@@ -309,18 +309,25 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
         auto constraint = new messages::route::RouteConstraints;
 
         constraint->setRouteID(TaskOptionClass::m_routeIdFromLastTask); //include initial waypoint
-
+        
         //add some lead distance
         double startNorth, startEast, endNorth, endEast;
         flatEarth.ConvertLatLong_degToNorthEast_m(entityState->getLocation()->getLatitude(), entityState->getLocation()->getLongitude(), startEast, startNorth);
         flatEarth.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), endEast, endNorth);
-
-        auto startPoint = VisiLibity::Point(startNorth, startEast);
+        
+	    auto startPoint = VisiLibity::Point(startNorth, startEast);
         auto endPoint = VisiLibity::Point(endNorth, endEast);
 
         auto vec = VisiLibity::Point::normalize(endPoint - startPoint) * m_startPointLead_m;
 
-        auto newStart = startPoint + vec;
+        auto newStart = startPoint;
+
+	    //no look ahead for ground vehicles.
+		if (!afrl::vehicles::isGroundVehicleState(cast))
+		{
+			newStart = newStart + vec;
+		}
+
         auto newStartPoint = std::make_shared<afrl::cmasi::Location3D>();
         flatEarth.ConvertNorthEast_mToLatLong_deg(newStart.y(), newStart.x(), startNorth, startEast);
         newStartPoint->setLatitude(startNorth);

@@ -261,8 +261,13 @@ void PlanBuilderService::processTaskAssignmentSummary(const std::shared_ptr<uxas
                                                             entityState->getLocation()->getLongitude(),
                                                             north_m, east_m);
 
-            north_m += m_assignmentStartPointLead_m * cos(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
-            east_m += m_assignmentStartPointLead_m * sin(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
+			//no lead ahead for ground vehicles
+			auto cast = std::dynamic_pointer_cast<avtas::lmcp::Object>(entityState);
+			if (!afrl::vehicles::isGroundVehicleState(cast))
+			{
+				north_m += m_assignmentStartPointLead_m * cos(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
+				east_m += m_assignmentStartPointLead_m * sin(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
+			}
 
             double latitude_deg(0.0);
             double longitude_deg(0.0);
