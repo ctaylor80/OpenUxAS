@@ -138,7 +138,7 @@ private:
 	void sendUniqueAutomationResponse(int64_t uniqueRequestID);
     void addLoitersToMissionCommands(std::shared_ptr<uxas::messages::task::UniqueAutomationResponse> response);
 	void addBacktrackToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response);
-	void addReturnToFirstWaypointToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response);
+	bool addReturnToFirstWaypointToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response);
     /*! \brief  nested class for tracking projected state of an entity during the plan building process */
     class ProjectedState {
     public:

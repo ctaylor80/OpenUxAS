@@ -147,6 +147,7 @@ PlanBuilderService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
 		auto firstMiss = uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().front();
 		auto firstRoutes = routeResponse->getRouteResponses().front();
 
+		firstMiss->getWaypointList().back()->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 1);
 		for (auto wp : firstRoutes->getWaypoints())
 		{
 			auto clonedWp = wp->clone();
@@ -464,7 +465,6 @@ void PlanBuilderService::checkNextTaskImplementationRequest(int64_t uniqueReques
             auto response = m_inProgressResponse[uniqueRequestID];
 
 			//check IMPACT planning behaviors
-
 			auto waitingOnRoutePlanner = false;
 			auto usingBehavior = false;
 			auto uniqueAutomationRequest = m_uniqueAutomationRequests.find(uniqueRequestID);
@@ -477,8 +477,7 @@ void PlanBuilderService::checkNextTaskImplementationRequest(int64_t uniqueReques
 			        {
 			        case afrl::impact::RoutePlanningBehavior::LoiterAtLastWaypoint: addLoitersToMissionCommands(response); break;
 			        case afrl::impact::RoutePlanningBehavior::BacktrackThroughTasks: addBacktrackToMissionCommands(response); break;
-			        case afrl::impact::RoutePlanningBehavior::ReturnToFirstWaypoint: addReturnToFirstWaypointToMissionCommands(response); 
-						waitingOnRoutePlanner = true;
+			        case afrl::impact::RoutePlanningBehavior::ReturnToFirstWaypoint: waitingOnRoutePlanner = addReturnToFirstWaypointToMissionCommands(response); 
 			        	break;
 			        }
 					usingBehavior = true;
@@ -617,14 +616,14 @@ void PlanBuilderService::addBacktrackToMissionCommands(std::shared_ptr<messages:
 	}
 }
 
-void PlanBuilderService::addReturnToFirstWaypointToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response)
+bool PlanBuilderService::addReturnToFirstWaypointToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response)
 {
 	if (response->getOriginalResponse()->getMissionCommandList().empty())
-		return;
+		return false;
 	auto firstMish = response->getOriginalResponse()->getMissionCommandList().back();
     
 	if (firstMish->getWaypointList().empty())
-    	return;
+    	return false;
     
     auto first = firstMish->getWaypointList().front();
     auto last = firstMish->getWaypointList().back();
@@ -638,20 +637,23 @@ void PlanBuilderService::addReturnToFirstWaypointToMissionCommands(std::shared_p
 	routePlanRequest->setIsCostOnlyRequest(false);
 
     auto constraints = std::make_shared<messages::route::RouteConstraints>();
-    constraints->setStartLocation(first->clone()); 
+	constraints->setUseEndHeading(false);
+	constraints->setUseStartHeading(false);
+    constraints->setStartLocation(last->clone());
+	//not working correctly!
 	for (auto wp : firstMish->getWaypointList())
 	{
 		if (!wp->getAssociatedTasks().empty())
 		{
 			constraints->setEndLocation(wp->clone());
+			break;
 		}
-		break;
 	}
     routePlanRequest->getRouteRequests().push_back(constraints->clone());
     
     sendSharedLmcpObjectBroadcastMessage(routePlanRequest);
 
-
+	return true;
 }
 }; //namespace service
 }; //namespace uxas
