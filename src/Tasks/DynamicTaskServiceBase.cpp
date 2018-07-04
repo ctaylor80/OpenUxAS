@@ -165,9 +165,10 @@ bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avta
                 auto lastWaypont = mish->getWaypointList().back();
 
                 auto config = std::shared_ptr<afrl::cmasi::EntityConfiguration>(m_entityConfigurations[mish->getVehicleID()]);
-                auto loc = std::shared_ptr<afrl::cmasi::Location3D>(m_targetLocations[mish->getVehicleID()]);
+                auto loc = m_targetLocations[mish->getVehicleID()];
+				auto gimbalLoc = m_targetStarePoints[mish->getVehicleID()];
 
-                auto gimbalActions = calculateGimbalStareAction(config, loc);
+                auto gimbalActions = calculateGimbalStareAction(config, gimbalLoc);
                 auto loiterActions = calculateLoiterAction(config, loc);
 
                 for (auto gimbalAction : gimbalActions->getVehicleActionList())
@@ -275,6 +276,9 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
         {
             return;
         }
+
+		m_targetStarePoints[entityState->getID()] = std::shared_ptr<afrl::cmasi::Location3D>(loc->clone());
+
         //check if the target location would intersect a KOZ. Attempt move. Only for Air Vehicles
         if (afrl::cmasi::isAirVehicleState(cast) &&
             m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
