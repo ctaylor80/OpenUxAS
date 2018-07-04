@@ -909,7 +909,9 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                                             constraints is where this route starts and is also on task. Assume The previous waypoint matches the start 
                                             location constraint and should be on task. 
                                             */
-                                            if (plan.second->getWaypoints().size() == 1 && !taskImplementationResponse->getTaskWaypoints().empty())
+                                            if (plan.second->getWaypoints().size() == 1 &&
+												!taskImplementationResponse->getTaskWaypoints().empty() &&
+												taskImplementationResponse->getTaskWaypoints().back()->getAssociatedTasks().empty())
                                             {
                                                 taskImplementationResponse->getTaskWaypoints().back()->getAssociatedTasks().push_back(m_task->getTaskID());
                                             }
