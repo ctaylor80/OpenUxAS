@@ -238,32 +238,6 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                     else
                     {
                         UXAS_LOG_WARN("kvp error with no waiting response! multiple were probably sent for the same request.");
-                        checkTasksInitialized();
-                    }
-                    //TODO: case where a task failed to initialize. Figure out the task and then send an error for every request that depends on it!
-                }
-                else if (kv->getKey().compare("Task Ready Timeout") == 0)
-                {
-                    if (!m_requestsWaitingForTasks.empty())
-                    {
-                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_requestsWaitingForTasks.front();
-                        m_requestsWaitingForTasks.pop_front();
-                        sendResponseError(timedOut, kv->getValue());
-
-                        for (auto requiredTask : timedOut->getOriginalRequest()->getTaskList())
-                        {
-                            if (m_availableInitializedTasks.find(requiredTask) == m_availableInitializedTasks.end())
-                            {
-                                for (auto requestWaitingForTask : m_requestsWaitingForTasks)
-                                {
-                                    auto taskList = requestWaitingForTask->getOriginalRequest()->getTaskList();
-                                    if (std::find(taskList.begin(), taskList.end(), [&](const int64_t x) {return x == requiredTask; }) != taskList.end())
-                                    {
-                                        //this request will also time out. go ahead and send an error
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -457,12 +431,15 @@ void AutomationRequestValidatorService::OnTasksReadyTimeout()
 {
     if(!m_requestsWaitingForTasks.empty())
     {
+        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_requestsWaitingForTasks.front();
+        m_requestsWaitingForTasks.pop_front();
+
         //Send to self. This will execute on the ZMQ processing thread
         auto err = std::make_shared<afrl::cmasi::ServiceStatus>();
         err->setStatusType(afrl::cmasi::ServiceStatusType::Error);
         auto kvp = new afrl::cmasi::KeyValuePair();
-        kvp->setKey("Task Ready Timeout");
-        kvp->setValue("Task Init Timout. Was not able to properly initialize all requested tasks.");
+        kvp->setKey("No UniqueAutomationResponse");
+        kvp->setValue("Task Init Timout. Automaiton request ID [" + std::to_string(timedOut->getRequestID()) + "] was not able to properly initialize all requested tasks");
         err->getInfo().push_back(kvp);
         m_messageSender.sendSharedLimitedCastMessage(m_entityIdNetworkIdUnicastString, err);
     }
@@ -536,7 +513,6 @@ void AutomationRequestValidatorService::sendNextRequest()
         return;
     }
 
-    //TODO: it is still possible to get into a state where many requests will time out. I suspect it it because of a backup in the route aggregator!
     sendSharedLmcpObjectBroadcastMessage(uniqueAutomationRequest);
 
     auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
