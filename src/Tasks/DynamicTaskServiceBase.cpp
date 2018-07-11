@@ -27,7 +27,7 @@ DynamicTaskServiceBase::DynamicTaskServiceBase(const std::string& typeName, cons
     : TaskServiceBase(typeName, directoryName)
 {
     m_isMakeTransitionWaypointsActive = true;
-	m_taskCompletes = false;
+    m_taskCompletes = false;
 }
 
 
@@ -47,10 +47,10 @@ bool DynamicTaskServiceBase::configureTask(const pugi::xml_node& serviceXmlNode)
             {
                 m_startPointLead_m = std::stoi(ndCurrent.first_child().value());
             }
-			if (std::strcmp(ndCurrent.name(), STRING_XML_TARGET_MOVEMENT_RECALCULATE_THRESHOLD) == 0)
-			{
-				m_straightLineThreshold_m = std::stoi(ndCurrent.first_child().value());
-			}
+            if (std::strcmp(ndCurrent.name(), STRING_XML_TARGET_MOVEMENT_RECALCULATE_THRESHOLD) == 0)
+            {
+                m_straightLineThreshold_m = std::stoi(ndCurrent.first_child().value());
+            }
         }
     }
 
@@ -166,7 +166,7 @@ bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avta
 
                 auto config = std::shared_ptr<afrl::cmasi::EntityConfiguration>(m_entityConfigurations[mish->getVehicleID()]);
                 auto loc = m_targetLocations[mish->getVehicleID()];
-				auto gimbalLoc = m_targetStarePoints[mish->getVehicleID()];
+                auto gimbalLoc = m_targetStarePoints[mish->getVehicleID()];
 
                 auto gimbalActions = calculateGimbalStareAction(config, gimbalLoc);
                 auto loiterActions = calculateLoiterAction(config, loc);
@@ -254,21 +254,21 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
 
         auto loc = calculateTargetLocation(entityState);
 
-		//check if the target has changed significantly
-	    if (m_targetLocations.find(entityState->getID()) != m_targetLocations.end())
-	    {
-			common::utilities::CUnitConversions flatEarth;
-			double north, east, prevNorth, prevEast;
+        //check if the target has changed significantly
+        if (m_targetLocations.find(entityState->getID()) != m_targetLocations.end())
+        {
+            common::utilities::CUnitConversions flatEarth;
+            double north, east, prevNorth, prevEast;
 
-			auto prevLoc = m_targetLocations[entityState->getID()];
-			flatEarth.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
-			flatEarth.ConvertLatLong_degToNorthEast_m(prevLoc->getLatitude(), prevLoc->getLongitude(), prevNorth, prevEast);
-			auto distance = sqrt(pow(north - prevNorth, 2) + pow(east - prevEast, 2));
-			if (distance < m_straightLineThreshold_m)
-			{
-				return;
-			}
-	    }
+            auto prevLoc = m_targetLocations[entityState->getID()];
+            flatEarth.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), north, east);
+            flatEarth.ConvertLatLong_degToNorthEast_m(prevLoc->getLatitude(), prevLoc->getLongitude(), prevNorth, prevEast);
+            auto distance = sqrt(pow(north - prevNorth, 2) + pow(east - prevEast, 2));
+            if (distance < m_straightLineThreshold_m)
+            {
+                return;
+            }
+        }
 
 
 
@@ -277,7 +277,7 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
             return;
         }
 
-		m_targetStarePoints[entityState->getID()] = std::shared_ptr<afrl::cmasi::Location3D>(loc->clone());
+        m_targetStarePoints[entityState->getID()] = std::shared_ptr<afrl::cmasi::Location3D>(loc->clone());
 
         //check if the target location would intersect a KOZ. Attempt move. Only for Air Vehicles
         if (afrl::cmasi::isAirVehicleState(cast) &&
@@ -319,18 +319,18 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
         flatEarth.ConvertLatLong_degToNorthEast_m(entityState->getLocation()->getLatitude(), entityState->getLocation()->getLongitude(), startEast, startNorth);
         flatEarth.ConvertLatLong_degToNorthEast_m(loc->getLatitude(), loc->getLongitude(), endEast, endNorth);
         
-	    auto startPoint = VisiLibity::Point(startNorth, startEast);
+        auto startPoint = VisiLibity::Point(startNorth, startEast);
         auto endPoint = VisiLibity::Point(endNorth, endEast);
 
         auto vec = VisiLibity::Point::normalize(endPoint - startPoint) * m_startPointLead_m;
 
         auto newStart = startPoint;
 
-	    //no look ahead for ground vehicles.
-		if (!afrl::vehicles::isGroundVehicleState(cast))
-		{
-			newStart = newStart + vec;
-		}
+        //no look ahead for ground vehicles.
+        if (!afrl::vehicles::isGroundVehicleState(cast))
+        {
+            newStart = newStart + vec;
+        }
 
         auto newStartPoint = std::make_shared<afrl::cmasi::Location3D>();
         flatEarth.ConvertNorthEast_mToLatLong_deg(newStart.y(), newStart.x(), startNorth, startEast);

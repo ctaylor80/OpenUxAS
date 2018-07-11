@@ -54,7 +54,7 @@ protected :
     int64_t m_straightLineThreshold_m = 400;
     double m_startPointLead_m = 50.0;        
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Location3D>> m_targetLocations;
-	std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Location3D>> m_targetStarePoints;
+    std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Location3D>> m_targetStarePoints;
     int64_t m_throttle_ms = 3000;
 
 private :

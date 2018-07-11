@@ -910,8 +910,8 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                                             location constraint and should be on task. 
                                             */
                                             if (plan.second->getWaypoints().size() == 1 &&
-												!taskImplementationResponse->getTaskWaypoints().empty() &&
-												taskImplementationResponse->getTaskWaypoints().back()->getAssociatedTasks().empty())
+                                                !taskImplementationResponse->getTaskWaypoints().empty() &&
+                                                taskImplementationResponse->getTaskWaypoints().back()->getAssociatedTasks().empty())
                                             {
                                                 taskImplementationResponse->getTaskWaypoints().back()->getAssociatedTasks().push_back(m_task->getTaskID());
                                             }
@@ -940,10 +940,10 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                                     waypointLast->setNumber(newNumber);
                                     waypointLast->setNextWaypoint(newNumber);
                                     taskImplementationResponse->getTaskWaypoints().back()->setNextWaypoint(newNumber);
-									if (m_taskCompletes)
-									{
-										waypointLast->getAssociatedTasks().clear();
-									}
+                                    if (m_taskCompletes)
+                                    {
+                                        waypointLast->getAssociatedTasks().clear();
+                                    }
                                     taskImplementationResponse->getTaskWaypoints().push_back(waypointLast);
                                     waypointLast = nullptr;
 

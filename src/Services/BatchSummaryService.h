@@ -120,21 +120,21 @@ namespace uxas
             void HandleTaskAutomationResponse(const std::shared_ptr<messages::task::TaskAutomationResponse>& object);
 
 
-			struct TupleHashInt64
-			{
-				typedef std::tuple <int64_t, int64_t, int64_t> argument_type;
-				typedef std::size_t result_type;
+            struct TupleHashInt64
+            {
+                typedef std::tuple <int64_t, int64_t, int64_t> argument_type;
+                typedef std::size_t result_type;
 
-				result_type operator()(argument_type const& s) const
-				{
-					result_type const h1(std::hash<int64_t>()(std::get<0>(s)));
-					result_type const h2(std::hash<int64_t>()(std::get<1>(s)));
-					result_type const h3(std::hash<int64_t>()(std::get<2>(s)));
+                result_type operator()(argument_type const& s) const
+                {
+                    result_type const h1(std::hash<int64_t>()(std::get<0>(s)));
+                    result_type const h2(std::hash<int64_t>()(std::get<1>(s)));
+                    result_type const h3(std::hash<int64_t>()(std::get<2>(s)));
 
-					result_type returnValue = h1 ^ (h2 << 1) ^ (h3 << 2);
-					return returnValue;
-				}
-			};
+                    result_type returnValue = h1 ^ (h2 << 1) ^ (h3 << 2);
+                    return returnValue;
+                }
+            };
 
             // parameters
             bool m_fastPlan{ false };
@@ -158,8 +158,8 @@ namespace uxas
             std::unordered_map<int64_t, std::shared_ptr<ZonePair> > m_keepOutZones;
 
 
-			std::unordered_map<std::tuple<int64_t, int64_t, int64_t>, std::shared_ptr<afrl::impact::VehicleSummary>, TupleHashInt64> m_vehicleWithAreasToVehicleSummary;
-			std::unordered_map<int64_t, int64_t> m_AngledAreaSearchTaskIdToAreaOfInterest;
+            std::unordered_map<std::tuple<int64_t, int64_t, int64_t>, std::shared_ptr<afrl::impact::VehicleSummary>, TupleHashInt64> m_vehicleWithAreasToVehicleSummary;
+            std::unordered_map<int64_t, int64_t> m_AngledAreaSearchTaskIdToAreaOfInterest;
         };
 
     }; //namespace service

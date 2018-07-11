@@ -214,13 +214,13 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
     {
         HandleAutomationRequest(receivedLmcpMessage->m_object);
     }
-	else if (uxas::messages::task::isUniqueAutomationResponse(receivedLmcpMessage->m_object.get()))
-	{
-		HandleAutomationResponse(receivedLmcpMessage->m_object);
-	}
+    else if (uxas::messages::task::isUniqueAutomationResponse(receivedLmcpMessage->m_object.get()))
+    {
+        HandleAutomationResponse(receivedLmcpMessage->m_object);
+    }
     else if (afrl::cmasi::isServiceStatus(receivedLmcpMessage->m_object.get()))
     {
-		auto servStatus = std::static_pointer_cast<afrl::cmasi::ServiceStatus>(receivedLmcpMessage->m_object);
+        auto servStatus = std::static_pointer_cast<afrl::cmasi::ServiceStatus>(receivedLmcpMessage->m_object);
             for (auto kv : servStatus->getInfo())
             {
                 if (kv->getKey().compare("No UniqueAutomationResponse") == 0)
@@ -238,6 +238,32 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                     else
                     {
                         UXAS_LOG_WARN("kvp error with no waiting response! multiple were probably sent for the same request.");
+                        checkTasksInitialized();
+                    }
+                    //TODO: case where a task failed to initialize. Figure out the task and then send an error for every request that depends on it!
+                }
+                else if (kv->getKey().compare("Task Ready Timeout") == 0)
+                {
+                    if (!m_requestsWaitingForTasks.empty())
+                    {
+                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_requestsWaitingForTasks.front();
+                        m_requestsWaitingForTasks.pop_front();
+                        sendResponseError(timedOut, kv->getValue());
+
+                        for (auto requiredTask : timedOut->getOriginalRequest()->getTaskList())
+                        {
+                            if (m_availableInitializedTasks.find(requiredTask) == m_availableInitializedTasks.end())
+                            {
+                                for (auto requestWaitingForTask : m_requestsWaitingForTasks)
+                                {
+                                    auto taskList = requestWaitingForTask->getOriginalRequest()->getTaskList();
+                                    if (std::find(taskList.begin(), taskList.end(), [&](const int64_t x) {return x == requiredTask; }) != taskList.end())
+                                    {
+                                        //this request will also time out. go ahead and send an error
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -247,61 +273,61 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
 
 void AutomationRequestValidatorService::HandleAutomationRequest(std::shared_ptr<avtas::lmcp::Object>& autoRequest)
 {
-	auto uniqueAutomationRequest = std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>(new uxas::messages::task::UniqueAutomationRequest);
-	uniqueAutomationRequest->setRequestID(getUniqueEntitySendMessageId());
+    auto uniqueAutomationRequest = std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>(new uxas::messages::task::UniqueAutomationRequest);
+    uniqueAutomationRequest->setRequestID(getUniqueEntitySendMessageId());
 
-	if (afrl::impact::isImpactAutomationRequest(autoRequest))
-	{
-		auto sand = std::static_pointer_cast<afrl::impact::ImpactAutomationRequest>(autoRequest);
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].requestType = SANDBOX_AUTOMATION_REQUEST;
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].playId = sand->getPlayID();
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].solnId = sand->getSolutionID();
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = sand->getSandbox();
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].taskRequestId = sand->getRequestID();
-		uniqueAutomationRequest->setOriginalRequest(sand->getTrialRequest()->clone());
-		uniqueAutomationRequest->setSandBoxRequest(sand->getSandbox());
-		auto req = sand->getTrialRequest();
-		auto desc = generateDescription(req->getEntityList(), req->getTaskList());
-		IMPACT_INFORM("recieved impact request with id ", sand->getRequestID(), " ", desc);
-	}
-	else if (uxas::messages::task::isTaskAutomationRequest(autoRequest))
-	{
-		auto taskAutomationRequest = std::static_pointer_cast<uxas::messages::task::TaskAutomationRequest>(autoRequest);
+    if (afrl::impact::isImpactAutomationRequest(autoRequest))
+    {
+        auto sand = std::static_pointer_cast<afrl::impact::ImpactAutomationRequest>(autoRequest);
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].requestType = SANDBOX_AUTOMATION_REQUEST;
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].playId = sand->getPlayID();
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].solnId = sand->getSolutionID();
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = sand->getSandbox();
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].taskRequestId = sand->getRequestID();
+        uniqueAutomationRequest->setOriginalRequest(sand->getTrialRequest()->clone());
+        uniqueAutomationRequest->setSandBoxRequest(sand->getSandbox());
+        auto req = sand->getTrialRequest();
+        auto desc = generateDescription(req->getEntityList(), req->getTaskList());
+        IMPACT_INFORM("recieved impact request with id ", sand->getRequestID(), " ", desc);
+    }
+    else if (uxas::messages::task::isTaskAutomationRequest(autoRequest))
+    {
+        auto taskAutomationRequest = std::static_pointer_cast<uxas::messages::task::TaskAutomationRequest>(autoRequest);
 
-		uniqueAutomationRequest->setOriginalRequest((afrl::cmasi::AutomationRequest*) taskAutomationRequest->getOriginalRequest()->clone());
-		uniqueAutomationRequest->setSandBoxRequest(taskAutomationRequest->getSandBoxRequest());
-		for (auto& planningState : taskAutomationRequest->getPlanningStates())
-		{
-			uniqueAutomationRequest->getPlanningStates().push_back(planningState->clone());
-		}
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].requestType = TASK_AUTOMATION_REQUEST;
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].taskRequestId = taskAutomationRequest->getRequestID();
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = false;
-	}
-	else
-	{
-		IMPACT_INFORM("Received CMASI automation request");
-		uniqueAutomationRequest->setOriginalRequest((afrl::cmasi::AutomationRequest*) autoRequest->clone());
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].requestType = AUTOMATION_REQUEST;
-		m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = true;
+        uniqueAutomationRequest->setOriginalRequest((afrl::cmasi::AutomationRequest*) taskAutomationRequest->getOriginalRequest()->clone());
+        uniqueAutomationRequest->setSandBoxRequest(taskAutomationRequest->getSandBoxRequest());
+        for (auto& planningState : taskAutomationRequest->getPlanningStates())
+        {
+            uniqueAutomationRequest->getPlanningStates().push_back(planningState->clone());
+        }
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].requestType = TASK_AUTOMATION_REQUEST;
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].taskRequestId = taskAutomationRequest->getRequestID();
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = false;
+    }
+    else
+    {
+        IMPACT_INFORM("Received CMASI automation request");
+        uniqueAutomationRequest->setOriginalRequest((afrl::cmasi::AutomationRequest*) autoRequest->clone());
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].requestType = AUTOMATION_REQUEST;
+        m_sandboxMap[uniqueAutomationRequest->getRequestID()].sandboxed = true;
 
-	}
+    }
 
-	// queue a valid automation request
-	if (isCheckAutomationRequestRequirements(uniqueAutomationRequest))
-	{
-		m_requestsWaitingForTasks.push_back(uniqueAutomationRequest);
-		checkTasksInitialized();
-	}
-	else
-	{
-		//send out empty automation response
-		m_pendingRequests.push_front(uniqueAutomationRequest);
-		auto emptyResponse = std::make_shared<messages::task::UniqueAutomationResponse>();
-		emptyResponse->setResponseID(uniqueAutomationRequest->getRequestID());
-		auto emptyObjectResponse = std::shared_ptr<avtas::lmcp::Object>(emptyResponse);
-		HandleAutomationResponse(emptyObjectResponse);
-	}
+    // queue a valid automation request
+    if (isCheckAutomationRequestRequirements(uniqueAutomationRequest))
+    {
+        m_requestsWaitingForTasks.push_back(uniqueAutomationRequest);
+        checkTasksInitialized();
+    }
+    else
+    {
+        //send out empty automation response
+        m_pendingRequests.push_front(uniqueAutomationRequest);
+        auto emptyResponse = std::make_shared<messages::task::UniqueAutomationResponse>();
+        emptyResponse->setResponseID(uniqueAutomationRequest->getRequestID());
+        auto emptyObjectResponse = std::shared_ptr<avtas::lmcp::Object>(emptyResponse);
+        HandleAutomationResponse(emptyObjectResponse);
+    }
 }
 
 void AutomationRequestValidatorService::HandleAutomationResponse(std::shared_ptr<avtas::lmcp::Object>& autoResponse)
@@ -421,7 +447,7 @@ void AutomationRequestValidatorService::OnResponseTimeout()
         err->setStatusType(afrl::cmasi::ServiceStatusType::Error);
         auto kvp = new afrl::cmasi::KeyValuePair();
         kvp->setKey("No UniqueAutomationResponse");
-        kvp->setValue("Timeout");
+        kvp->setValue("Timeout.");
         err->getInfo().push_back(kvp);
         m_messageSender.sendSharedLimitedCastMessage(m_entityIdNetworkIdUnicastString, err);
     }
@@ -431,15 +457,12 @@ void AutomationRequestValidatorService::OnTasksReadyTimeout()
 {
     if(!m_requestsWaitingForTasks.empty())
     {
-        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_requestsWaitingForTasks.front();
-        m_requestsWaitingForTasks.pop_front();
-
         //Send to self. This will execute on the ZMQ processing thread
         auto err = std::make_shared<afrl::cmasi::ServiceStatus>();
         err->setStatusType(afrl::cmasi::ServiceStatusType::Error);
         auto kvp = new afrl::cmasi::KeyValuePair();
-        kvp->setKey("No UniqueAutomationResponse");
-        kvp->setValue("Task Init Timout. Automaiton request ID [" + std::to_string(timedOut->getRequestID()) + "] was not able to properly initialize all requested tasks");
+        kvp->setKey("Task Ready Timeout");
+        kvp->setValue("Task Init Timout. Was not able to properly initialize all requested tasks.");
         err->getInfo().push_back(kvp);
         m_messageSender.sendSharedLimitedCastMessage(m_entityIdNetworkIdUnicastString, err);
     }
@@ -458,7 +481,7 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
     keyValuePair->setValue(std::string("RequestValidator: ") + errStr);
     errorResponse->getInfo().push_back(keyValuePair);
     if (m_sandboxMap.find(reqID) != m_sandboxMap.end())
-	{
+    {
         if (m_sandboxMap[reqID].requestType == TASK_AUTOMATION_REQUEST)
         {
             auto taskResponse = std::make_shared<uxas::messages::task::TaskAutomationResponse>();
@@ -513,6 +536,7 @@ void AutomationRequestValidatorService::sendNextRequest()
         return;
     }
 
+    //TODO: it is still possible to get into a state where many requests will time out. I suspect it it because of a backup in the route aggregator!
     sendSharedLmcpObjectBroadcastMessage(uniqueAutomationRequest);
 
     auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();

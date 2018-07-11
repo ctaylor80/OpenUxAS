@@ -73,7 +73,7 @@ PlanBuilderService::configure(const pugi::xml_node& ndComponent)
     addSubscriptionAddress(uxas::messages::task::TaskImplementationResponse::Subscription);
     addSubscriptionAddress(afrl::impact::ImpactAutomationRequest::Subscription);
     addSubscriptionAddress(afrl::impact::ImpactAutomationResponse::Subscription);
-	addSubscriptionAddress(messages::route::RoutePlanResponse::Subscription);
+    addSubscriptionAddress(messages::route::RoutePlanResponse::Subscription);
 
     // ENTITY STATES
     addSubscriptionAddress(afrl::cmasi::EntityState::Subscription);
@@ -99,14 +99,14 @@ PlanBuilderService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
         {
             m_reqeustIDVsOverrides[impactAutomationRequest->getRequestID()].push_back(std::shared_ptr<afrl::impact::SpeedAltPair>(override->clone()));
         }
-		//TODO: grab the route planning behavior.
-		m_requestIDVsImpactRequest[impactAutomationRequest->getRequestID()] = std::shared_ptr<afrl::impact::ImpactAutomationRequest>(impactAutomationRequest->clone());
+        //TODO: grab the route planning behavior.
+        m_requestIDVsImpactRequest[impactAutomationRequest->getRequestID()] = std::shared_ptr<afrl::impact::ImpactAutomationRequest>(impactAutomationRequest->clone());
     }
     else if (afrl::impact::isImpactAutomationResponse(receivedLmcpMessage->m_object))
     {
         auto impactAutomationResponse = std::static_pointer_cast<afrl::impact::ImpactAutomationResponse>(receivedLmcpMessage->m_object);
         m_reqeustIDVsOverrides.erase(impactAutomationResponse->getResponseID());
-		m_requestIDVsImpactRequest.erase(impactAutomationResponse->getResponseID());
+        m_requestIDVsImpactRequest.erase(impactAutomationResponse->getResponseID());
     }
     else if(uxas::messages::task::isTaskAssignmentSummary(receivedLmcpMessage->m_object))
     {
@@ -127,46 +127,46 @@ PlanBuilderService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
         m_remainingAssignments[uniqueAutomationRequest->getRequestID()] = std::deque< std::shared_ptr<uxas::messages::task::TaskAssignment> >();
         m_inProgressResponse[uniqueAutomationRequest->getRequestID()] = std::shared_ptr<uxas::messages::task::UniqueAutomationResponse>(nullptr);
     }
-	else if (messages::route::isRoutePlanResponse(receivedLmcpMessage->m_object))
-	{
-		auto routeResponse = std::static_pointer_cast<messages::route::RoutePlanResponse>(receivedLmcpMessage->m_object);
-		auto uniqueRequestID = routeResponse->getResponseID();
-		auto uniqueAutomationResponseIter = m_inProgressResponse.find(uniqueRequestID);
+    else if (messages::route::isRoutePlanResponse(receivedLmcpMessage->m_object))
+    {
+        auto routeResponse = std::static_pointer_cast<messages::route::RoutePlanResponse>(receivedLmcpMessage->m_object);
+        auto uniqueRequestID = routeResponse->getResponseID();
+        auto uniqueAutomationResponseIter = m_inProgressResponse.find(uniqueRequestID);
 
-		if (uniqueAutomationResponseIter == m_inProgressResponse.end() ||
-			uniqueAutomationResponseIter->second == nullptr)
-		{
-			IMPACT_INFORM("PlanBuilder. UniqueAutomationResponse unexpectedly not constructed!");
-			return false;
-		}
+        if (uniqueAutomationResponseIter == m_inProgressResponse.end() ||
+            uniqueAutomationResponseIter->second == nullptr)
+        {
+            IMPACT_INFORM("PlanBuilder. UniqueAutomationResponse unexpectedly not constructed!");
+            return false;
+        }
 
-		if (uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().empty() ||
-			routeResponse->getRouteResponses().empty())
-			return false;
+        if (uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().empty() ||
+            routeResponse->getRouteResponses().empty())
+            return false;
 
-		auto firstMiss = uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().front();
-		auto firstRoutes = routeResponse->getRouteResponses().front();
+        auto firstMiss = uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().front();
+        auto firstRoutes = routeResponse->getRouteResponses().front();
 
-		firstMiss->getWaypointList().back()->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 1);
-		for (auto wp : firstRoutes->getWaypoints())
-		{
-			auto clonedWp = wp->clone();
-			clonedWp->setNumber(firstMiss->getWaypointList().back()->getNumber() + 1);
-			clonedWp->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 2);
-			firstMiss->getWaypointList().push_back(clonedWp);
-		}
+        firstMiss->getWaypointList().back()->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 1);
+        for (auto wp : firstRoutes->getWaypoints())
+        {
+            auto clonedWp = wp->clone();
+            clonedWp->setNumber(firstMiss->getWaypointList().back()->getNumber() + 1);
+            clonedWp->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 2);
+            firstMiss->getWaypointList().push_back(clonedWp);
+        }
 
-		//connect to first on task waypoint
-		for (auto wp : firstMiss->getWaypointList())
-		{
-			if (!wp->getAssociatedTasks().empty())
-			{
-				firstMiss->getWaypointList().back()->setNextWaypoint(wp->getNumber());
-				break;
-			}
-		}
-		sendUniqueAutomationResponse(uniqueRequestID);
-	}
+        //connect to first on task waypoint
+        for (auto wp : firstMiss->getWaypointList())
+        {
+            if (!wp->getAssociatedTasks().empty())
+            {
+                firstMiss->getWaypointList().back()->setNextWaypoint(wp->getNumber());
+                break;
+            }
+        }
+        sendUniqueAutomationResponse(uniqueRequestID);
+    }
     
     return (false); // always false implies never terminating service from here
 };
@@ -261,13 +261,13 @@ void PlanBuilderService::processTaskAssignmentSummary(const std::shared_ptr<uxas
                                                             entityState->getLocation()->getLongitude(),
                                                             north_m, east_m);
 
-			//no lead ahead for ground vehicles
-			auto cast = std::dynamic_pointer_cast<avtas::lmcp::Object>(entityState);
-			if (!afrl::vehicles::isGroundVehicleState(cast))
-			{
-				north_m += m_assignmentStartPointLead_m * cos(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
-				east_m += m_assignmentStartPointLead_m * sin(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
-			}
+            //no lead ahead for ground vehicles
+            auto cast = std::dynamic_pointer_cast<avtas::lmcp::Object>(entityState);
+            if (!afrl::vehicles::isGroundVehicleState(cast))
+            {
+                north_m += m_assignmentStartPointLead_m * cos(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
+                east_m += m_assignmentStartPointLead_m * sin(entityState->getHeading() * n_Const::c_Convert::dDegreesToRadians());
+            }
 
             double latitude_deg(0.0);
             double longitude_deg(0.0);
@@ -469,34 +469,34 @@ void PlanBuilderService::checkNextTaskImplementationRequest(int64_t uniqueReques
 
             auto response = m_inProgressResponse[uniqueRequestID];
 
-			//check IMPACT planning behaviors
-			auto waitingOnRoutePlanner = false;
-			auto usingBehavior = false;
-			auto uniqueAutomationRequest = m_uniqueAutomationRequests.find(uniqueRequestID);
-			for (auto impactRequest : m_requestIDVsImpactRequest)
-			{
-			    if (impactRequest.second->getTrialRequest()->operator==(*uniqueAutomationRequest->second->getOriginalRequest()))
-			    {
-			        auto planningBehavior = impactRequest.second->getPlanBehavior();
-			        switch(planningBehavior)
-			        {
-			        case afrl::impact::RoutePlanningBehavior::LoiterAtLastWaypoint: addLoitersToMissionCommands(response); break;
-			        case afrl::impact::RoutePlanningBehavior::BacktrackThroughTasks: addBacktrackToMissionCommands(response); break;
-			        case afrl::impact::RoutePlanningBehavior::ReturnToFirstWaypoint: waitingOnRoutePlanner = addReturnToFirstWaypointToMissionCommands(response); 
-			        	break;
-			        }
-					usingBehavior = true;
-			        break;
-			    }
-			}
+            //check IMPACT planning behaviors
+            auto waitingOnRoutePlanner = false;
+            auto usingBehavior = false;
+            auto uniqueAutomationRequest = m_uniqueAutomationRequests.find(uniqueRequestID);
+            for (auto impactRequest : m_requestIDVsImpactRequest)
+            {
+                if (impactRequest.second->getTrialRequest()->operator==(*uniqueAutomationRequest->second->getOriginalRequest()))
+                {
+                    auto planningBehavior = impactRequest.second->getPlanBehavior();
+                    switch(planningBehavior)
+                    {
+                    case afrl::impact::RoutePlanningBehavior::LoiterAtLastWaypoint: addLoitersToMissionCommands(response); break;
+                    case afrl::impact::RoutePlanningBehavior::BacktrackThroughTasks: addBacktrackToMissionCommands(response); break;
+                    case afrl::impact::RoutePlanningBehavior::ReturnToFirstWaypoint: waitingOnRoutePlanner = addReturnToFirstWaypointToMissionCommands(response); 
+                        break;
+                    }
+                    usingBehavior = true;
+                    break;
+                }
+            }
 
             if (m_addLoiterToEndOfMission && !usingBehavior)
             {
                 addLoitersToMissionCommands(response);
             }
 
-			if (!waitingOnRoutePlanner)
-			    sendUniqueAutomationResponse(uniqueRequestID);
+            if (!waitingOnRoutePlanner)
+                sendUniqueAutomationResponse(uniqueRequestID);
         }
         else
         {
@@ -507,19 +507,19 @@ void PlanBuilderService::checkNextTaskImplementationRequest(int64_t uniqueReques
 
 void PlanBuilderService::sendUniqueAutomationResponse(int64_t uniqueRequestID)
 {
-	auto response = m_inProgressResponse[uniqueRequestID];
+    auto response = m_inProgressResponse[uniqueRequestID];
 
-	sendSharedLmcpObjectBroadcastMessage(response);
-	m_inProgressResponse.erase(uniqueRequestID);
-	m_reqeustIDVsOverrides.erase(uniqueRequestID);
+    sendSharedLmcpObjectBroadcastMessage(response);
+    m_inProgressResponse.erase(uniqueRequestID);
+    m_reqeustIDVsOverrides.erase(uniqueRequestID);
 
-	auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
-	serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Information);
-	auto keyValuePair = new afrl::cmasi::KeyValuePair;
-	std::string message = "UniqueAutomationResponse[" + std::to_string(uniqueRequestID) + "] - sent";
-	keyValuePair->setKey(message);
-	serviceStatus->getInfo().push_back(keyValuePair);
-	sendSharedLmcpObjectBroadcastMessage(serviceStatus);
+    auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
+    serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Information);
+    auto keyValuePair = new afrl::cmasi::KeyValuePair;
+    std::string message = "UniqueAutomationResponse[" + std::to_string(uniqueRequestID) + "] - sent";
+    keyValuePair->setKey(message);
+    serviceStatus->getInfo().push_back(keyValuePair);
+    sendSharedLmcpObjectBroadcastMessage(serviceStatus);
 }
 void PlanBuilderService::addLoitersToMissionCommands(std::shared_ptr<uxas::messages::task::UniqueAutomationResponse> response)
 {
@@ -578,57 +578,57 @@ void PlanBuilderService::addLoitersToMissionCommands(std::shared_ptr<uxas::messa
 
 void PlanBuilderService::addBacktrackToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response)
 {
-	for (auto mish : response->getOriginalResponse()->getMissionCommandList())
-	{
-		if (mish->getWaypointList().size() < 3)
-			continue;
+    for (auto mish : response->getOriginalResponse()->getMissionCommandList())
+    {
+        if (mish->getWaypointList().size() < 3)
+            continue;
 
-		auto copy = std::shared_ptr<afrl::cmasi::MissionCommand>(mish->clone());
+        auto copy = std::shared_ptr<afrl::cmasi::MissionCommand>(mish->clone());
 
-		std::reverse(copy->getWaypointList().begin(), copy->getWaypointList().end());
+        std::reverse(copy->getWaypointList().begin(), copy->getWaypointList().end());
 
-		//remove transition waypoints to the first task
-		while (!copy->getWaypointList().empty())
-		{
-			if (!copy->getWaypointList().back()->getAssociatedTasks().empty())
-				break;
-			copy->getWaypointList().pop_back();
-		}
+        //remove transition waypoints to the first task
+        while (!copy->getWaypointList().empty())
+        {
+            if (!copy->getWaypointList().back()->getAssociatedTasks().empty())
+                break;
+            copy->getWaypointList().pop_back();
+        }
 
-		if (copy->getWaypointList().size() < 3)
-			return;
+        if (copy->getWaypointList().size() < 3)
+            return;
 
-		auto prev = mish->getWaypointList().back();
-		prev->setNextWaypoint(prev->getNumber() + 1);
-		for (auto wp = copy->getWaypointList().begin() + 1; wp != copy->getWaypointList().end(); wp++)
-		{
-			(*wp)->setNumber(prev->getNumber() + 1);
-			(*wp)->setNextWaypoint(prev->getNumber() + 2);
-			mish->getWaypointList().push_back((*wp)->clone());
-			prev = *wp;
-		}
+        auto prev = mish->getWaypointList().back();
+        prev->setNextWaypoint(prev->getNumber() + 1);
+        for (auto wp = copy->getWaypointList().begin() + 1; wp != copy->getWaypointList().end(); wp++)
+        {
+            (*wp)->setNumber(prev->getNumber() + 1);
+            (*wp)->setNextWaypoint(prev->getNumber() + 2);
+            mish->getWaypointList().push_back((*wp)->clone());
+            prev = *wp;
+        }
 
-		for (auto wp : mish->getWaypointList())
-		{
-			if (!wp->getAssociatedTasks().empty())
-			{
-				mish->getWaypointList().back()->setNextWaypoint(wp->getNumber());
-				break;
-			}
+        for (auto wp : mish->getWaypointList())
+        {
+            if (!wp->getAssociatedTasks().empty())
+            {
+                mish->getWaypointList().back()->setNextWaypoint(wp->getNumber());
+                break;
+            }
 
-		}
+        }
 
-	}
+    }
 }
 
 bool PlanBuilderService::addReturnToFirstWaypointToMissionCommands(std::shared_ptr<messages::task::UniqueAutomationResponse> response)
 {
-	if (response->getOriginalResponse()->getMissionCommandList().empty())
-		return false;
-	auto firstMish = response->getOriginalResponse()->getMissionCommandList().back();
+    if (response->getOriginalResponse()->getMissionCommandList().empty())
+        return false;
+    auto firstMish = response->getOriginalResponse()->getMissionCommandList().back();
     
-	if (firstMish->getWaypointList().empty())
-    	return false;
+    if (firstMish->getWaypointList().empty())
+        return false;
     
     auto first = firstMish->getWaypointList().front();
     auto last = firstMish->getWaypointList().back();
@@ -639,26 +639,25 @@ bool PlanBuilderService::addReturnToFirstWaypointToMissionCommands(std::shared_p
     routePlanRequest->setVehicleID(firstMish->getVehicleID());
     routePlanRequest->setOperatingRegion(originalRequest->getOriginalRequest()->getOperatingRegion());
     routePlanRequest->setRequestID(response->getResponseID());
-	routePlanRequest->setIsCostOnlyRequest(false);
+    routePlanRequest->setIsCostOnlyRequest(false);
 
     auto constraints = std::make_shared<messages::route::RouteConstraints>();
-	constraints->setUseEndHeading(false);
-	constraints->setUseStartHeading(false);
+    constraints->setUseEndHeading(false);
+    constraints->setUseStartHeading(false);
     constraints->setStartLocation(last->clone());
-	//not working correctly!
-	for (auto wp : firstMish->getWaypointList())
-	{
-		if (!wp->getAssociatedTasks().empty())
-		{
-			constraints->setEndLocation(wp->clone());
-			break;
-		}
-	}
+    for (auto wp : firstMish->getWaypointList())
+    {
+        if (!wp->getAssociatedTasks().empty())
+        {
+            constraints->setEndLocation(wp->clone());
+            break;
+        }
+    }
     routePlanRequest->getRouteRequests().push_back(constraints->clone());
     
     sendSharedLmcpObjectBroadcastMessage(routePlanRequest);
 
-	return true;
+    return true;
 }
 }; //namespace service
 }; //namespace uxas
