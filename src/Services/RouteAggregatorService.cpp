@@ -164,16 +164,6 @@ RouteAggregatorService::processReceivedLmcpMessage(std::unique_ptr<uxas::communi
         //ResetTaskOptions(areq); // clear m_taskOptions and wait for refresh from tasks
         CheckAllTaskOptionsReceived();
     }
-    else if (afrl::impact::isImpactAutomationRequest(receivedLmcpMessage->m_object.get()))
-    {
-        auto sreq = std::static_pointer_cast<afrl::impact::ImpactAutomationRequest>(receivedLmcpMessage->m_object);
-        auto areq = std::shared_ptr<uxas::messages::task::UniqueAutomationRequest>();
-        areq->setOriginalRequest(sreq->getTrialRequest()->clone());
-        m_uniqueAutomationRequests[m_autoRequestId++] = areq;
-        areq->setRequestID(m_autoRequestId);
-        //ResetTaskOptions(areq); // clear m_taskOptions and wait for refresh from tasks
-        CheckAllTaskOptionsReceived();
-    }
     else if (uxas::messages::task::isTaskPlanOptions(receivedLmcpMessage->m_object.get()))
     {
         auto taskOptions = std::static_pointer_cast<uxas::messages::task::TaskPlanOptions>(receivedLmcpMessage->m_object);

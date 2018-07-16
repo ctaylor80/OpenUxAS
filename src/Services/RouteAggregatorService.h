@@ -21,7 +21,6 @@
 
 #include "ServiceBase.h"
 #include "afrl/cmasi/CMASI.h"
-#include "afrl/impact/IMPACT.h"
 #include "afrl/vehicles/VEHICLES.h"
 #include "uxas/messages/route/ROUTE.h"
 #include "uxas/messages/task/UXTASK.h"
