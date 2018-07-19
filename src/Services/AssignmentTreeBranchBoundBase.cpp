@@ -571,19 +571,7 @@ void AssignmentTreeBranchBoundBase::calculateAssignment(std::unique_ptr<c_Node_B
         nodeAssignment->ExpandNode();
         nodeAssignment->printStatus("INFO::FINAL:  ");
 
-        if (nodeAssignment->m_staticAssignmentParameters->m_numberCompleteAssignments <= 0)
-        {
-            auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
-            serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Warning);
-            auto keyValuePair = new afrl::cmasi::KeyValuePair;
-            keyValuePair->setKey(std::string("No UniqueAutomationResponse"));
-            keyValuePair->setValue(std::string("Assignment not found: ") + nodeAssignment->m_staticAssignmentParameters->m_reasonsForNoAssignment.str());
-            serviceStatus->getInfo().push_back(keyValuePair);
-            keyValuePair = nullptr;
-            sendSharedLmcpObjectBroadcastMessage(serviceStatus);
-            std::cout << "RoutesNotFound:: " << std::endl << nodeAssignment->m_staticAssignmentParameters->m_reasonsForNoAssignment.str() << std::endl << std::endl;
-        }
-        else
+        if (nodeAssignment->m_staticAssignmentParameters->m_numberCompleteAssignments > 0)
         {
             auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
             serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Information);
@@ -622,7 +610,7 @@ void AssignmentTreeBranchBoundBase::calculateAssignment(std::unique_ptr<c_Node_B
         }
         else
         {
-            std::string errMsg = "ASSIGNMENT FAILED!";
+            std::string errMsg = "ASSIGNMENT FAILED!" + nodeAssignment->m_staticAssignmentParameters->m_reasonsForNoAssignment.str();
             UXAS_LOG_INFORM(errMsg);
             sendErrorMsg(errMsg);
         }    
