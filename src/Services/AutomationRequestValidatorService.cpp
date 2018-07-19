@@ -240,6 +240,28 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                         UXAS_LOG_WARN("kvp error with no waiting response! multiple were probably sent for the same request.");
                     }
                 }
+                if (kv->getKey().compare("Task Ready Timeout") == 0)
+                {
+                    if (!m_requestsWaitingForTasks.empty())
+                    {
+                        auto taskTimedOut = m_requestsWaitingForTasks.front();
+
+                        while (!m_requestsWaitingForTasks.empty())
+                        {
+                            auto request = m_requestsWaitingForTasks.front();
+                            auto requestTasks = m_requestsWaitingForTasks.front()->getOriginalRequest()->getTaskList();
+                            if (std::any_of(requestTasks.begin(), requestTasks.end(), [&](const int64_t taskId) {return m_availableTasks.find(taskId) == m_availableTasks.end(); }))
+                            {
+                                m_requestsWaitingForTasks.pop_front();
+                                sendResponseError(request, kv->getValue());
+                                IMPACT_INFORM("Caught another!");
+                            }
+                            else
+                                break;
+                        }
+                        checkTasksInitialized();
+                    }
+                }
             }
     }
     return false; // always false unless terminating
@@ -431,15 +453,12 @@ void AutomationRequestValidatorService::OnTasksReadyTimeout()
 {
     if(!m_requestsWaitingForTasks.empty())
     {
-        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_requestsWaitingForTasks.front();
-        m_requestsWaitingForTasks.pop_front();
-
         //Send to self. This will execute on the ZMQ processing thread
         auto err = std::make_shared<afrl::cmasi::ServiceStatus>();
         err->setStatusType(afrl::cmasi::ServiceStatusType::Error);
         auto kvp = new afrl::cmasi::KeyValuePair();
-        kvp->setKey("No UniqueAutomationResponse");
-        kvp->setValue("Task Init Timout. Automaiton request ID [" + std::to_string(timedOut->getRequestID()) + "] was not able to properly initialize all requested tasks");
+        kvp->setKey("Task Ready Timeout");
+        kvp->setValue("Task Init Timout. Was not able to properly initialize all requested tasks.");
         err->getInfo().push_back(kvp);
         m_messageSender.sendSharedLimitedCastMessage(m_entityIdNetworkIdUnicastString, err);
     }
@@ -488,7 +507,6 @@ void AutomationRequestValidatorService::sendResponseError(std::shared_ptr<uxas::
     {
         UXAS_LOG_ERROR("ERROR reported for a response that has already been sent! ", errStr);
     }
-    checkTasksInitialized();
 }
 
 void AutomationRequestValidatorService::sendNextRequest()
@@ -578,21 +596,11 @@ void AutomationRequestValidatorService::checkTasksInitialized()
     {
         // all tasks have been initialized, so disable timer
         uxas::common::TimerManager::getInstance().disableTimer(m_taskInitTimerId, 0);
-        if(!uxas::common::TimerManager::getInstance().isTimerActive(m_responseTimerId))
-        {
-            sendNextRequest();
-        }
     }
     else if(!uxas::common::TimerManager::getInstance().isTimerActive(m_taskInitTimerId) && !m_requestsWaitingForTasks.empty())
     {
         // top of task-init queue is still not ready, start timer if not already started
         uxas::common::TimerManager::getInstance().startSingleShotTimer(m_taskInitTimerId, m_maxResponseTime_ms);
-    }
-    
-    if(m_requestsWaitingForTasks.empty())
-    {
-        // all tasks have been initialized, so disable timer
-        uxas::common::TimerManager::getInstance().disableTimer(m_taskInitTimerId, 0);
     }
 }
 
