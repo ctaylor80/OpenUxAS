@@ -175,45 +175,6 @@ public:
 
 
 protected:
-    bool bProcessRoutePlanRequest(const std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest,
-            std::shared_ptr<uxas::messages::route::RoutePlanResponse>& routePlanResponse);
-    bool bProcessEgressRequest(const std::shared_ptr<uxas::messages::route::EgressRouteRequest>& egressRequest,
-            std::shared_ptr<uxas::messages::route::EgressRouteResponse>& egressResponse);
-    bool isProcessRoadPointsRequest(const std::shared_ptr<uxas::messages::route::RoadPointsRequest>& roadPointsRequest,
-                                    std::shared_ptr<uxas::messages::route::RoadPointsResponse>& roadPointsResponse);
-    bool isGetRoadPoints(const int64_t& startNodeId,const int64_t& endNodeId,int32_t& pathCost,std::deque<int64_t>& pathNodeIds);
-    bool isBuildRoadGraphWithOsm(const string& osmFile);
-    bool isFindShortestRoute(const int64_t& startNodeId, const int64_t& endNodeId,
-            int32_t& pathCost, std::deque<int64_t>& pathNodes);
-    bool isProcessHighwayNodes(const std::unordered_map<int64_t, bool>& nodeIdVs_isPlanningNode,
-            const std::vector<int64_t>& highWayIds);
-    bool isBuildGraph(const std::unordered_set<int64_t>& planningNodeIds, const std::vector<int64_t>& highWayIds);
-    bool isFindClosestNodeId(const n_FrameworkLib::CPosition& position,
-                             std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
-                             int64_t& nodeId, double& length_m);
-    bool isExamineCellsInSquare(const n_FrameworkLib::CPosition& position,
-            const int32_t& northStart, const int32_t& northEnd,
-            const int32_t& eastStart, const int32_t& eastEnd,
-                                std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
-            double& candidateLength_m, int64_t& candidateNodeId);
-    bool isExamineCell(const n_FrameworkLib::CPosition& position,
-            const int32_t& north, const int32_t& east,
-                       std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
-            double& candidateLength_m, int64_t& candidateNodeId);
-    void savePythonPlotCode();
-    void findRoadIntersectionsOfCircle(const n_FrameworkLib::CPosition& center, const double& radius_m,
-            std::vector<n_FrameworkLib::CPosition>& intersections);
-
-    bool isGetNodesOnSegment(const std::pair<int64_t, int64_t>& segmentNodeIds,
-                             const int64_t& startNodeId, const int64_t& endNodeId,
-                             const bool& isAddExtraNodeIds,
-                             std::vector<int64_t>& nodeIds);
-public:
-
-    struct s_PlannerParameters
-    {
-        double turnRadius_m = {0};
-    };
 
     struct s_EdgeIds
     {
@@ -221,31 +182,91 @@ public:
         int64_t m_highwayId = -1;
     };
 
+    struct s_roadNetworkContainer
+    {
+        /*! \brief  map from node ID to the planning node index*/
+        std::unordered_map<int64_t, int32_t> m_nodeIdVsPlanningIndex;
+        /*! \brief  map from planning node index ID to the node*/
+        std::shared_ptr<std::unordered_map<int32_t, int64_t> > m_planningIndexVsNodeId;
+        /*! \brief  storage for nodes*/
+        std::shared_ptr<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition>>> m_idVsNode;
+        /*! \brief  multimap relating way Id to it's Node Id's */
+        std::unordered_multimap<int64_t, int64_t> m_wayIdVsNodeId;
+        /*! \brief  map from segment begin/end node Ids to node Ids of the contained points */
+        std::unordered_multimap<std::pair<int64_t, int64_t>, std::unique_ptr<s_EdgeIds>, PairIdHash > m_nodeIdsVsEdgeNodeIds;
+        /*! \brief  map from node Id to segment begin/end node Ids */
+        std::unordered_multimap<int64_t, std::pair<int64_t, int64_t>> m_nodeIdVsSegmentBeginEndIds; //
+                                                                                                    /*! \brief  multimap from map cell to the node in the cell node, used to
+                                                                                                    find closest NodeId to a given North/East point. The cell is a north/east
+                                                                                                    pair, defined by dividing the North/East values by a cell length factor */
+        std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash > m_cellVsPlanningNodeIds;
+        std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash > m_cellVsAllNodeIds;
+        /*! \brief  used to convert Noth/East to cell Id's */
+        int32_t m_PositionToCellFactorNorth_m = 100;
+        int32_t m_PositionToCellFactorEast_m = 100;
+        int32_t m_northMin_m = 0;
+        int32_t m_eastMin_m = 0;
+
+        std::vector<n_FrameworkLib::CEdge> m_edges; //uses node index
+        std::shared_ptr<Graph_t> m_graph;
+
+        bool isSuccess;
+    };
+
+
+    bool bProcessRoutePlanRequest(const std::shared_ptr<uxas::messages::route::RoutePlanRequest>& routePlanRequest,
+            std::shared_ptr<uxas::messages::route::RoutePlanResponse>& routePlanResponse);
+    bool bProcessEgressRequest(const std::shared_ptr<uxas::messages::route::EgressRouteRequest>& egressRequest,
+            std::shared_ptr<uxas::messages::route::EgressRouteResponse>& egressResponse,
+            std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network);
+    bool isProcessRoadPointsRequest(const std::shared_ptr<uxas::messages::route::RoadPointsRequest>& roadPointsRequest,
+                                    std::shared_ptr<uxas::messages::route::RoadPointsResponse>& roadPointsResponse);
+    bool isGetRoadPoints(const int64_t& startNodeId,const int64_t& endNodeId,int32_t& pathCost,std::deque<int64_t>& pathNodeIds, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network);
+    std::shared_ptr<s_roadNetworkContainer> isBuildRoadGraphWithOsm(const string& osmFile);
+    bool isFindShortestRoute(const int64_t& startNodeId, const int64_t& endNodeId,
+            int32_t& pathCost, std::deque<int64_t>& pathNodes, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network);
+    bool isProcessHighwayNodes(const std::unordered_map<int64_t, bool>& nodeIdVs_isPlanningNode,
+            const std::vector<int64_t>& highWayIds, const std::shared_ptr<s_roadNetworkContainer> network);
+    bool isBuildGraph(const std::unordered_set<int64_t>& planningNodeIds, const std::vector<int64_t>& highWayIds, std::shared_ptr<s_roadNetworkContainer> container);
+    bool isFindClosestNodeId(const n_FrameworkLib::CPosition& position,
+                             std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
+                             int64_t& nodeId, double& length_m,
+                             std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network);
+    bool isExamineCellsInSquare(const n_FrameworkLib::CPosition& position,
+            const int32_t& northStart, const int32_t& northEnd,
+            const int32_t& eastStart, const int32_t& eastEnd,
+            std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
+            double& candidateLength_m, int64_t& candidateNodeId,
+            std::shared_ptr<s_roadNetworkContainer> network);
+    bool isExamineCell(const n_FrameworkLib::CPosition& position,
+            const int32_t& north, const int32_t& east,
+            std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
+            double& candidateLength_m, int64_t& candidateNodeId,
+            std::shared_ptr<s_roadNetworkContainer> network);
+    void savePythonPlotCode();
+    void findRoadIntersectionsOfCircle(const n_FrameworkLib::CPosition& center, const double& radius_m,
+            std::vector<n_FrameworkLib::CPosition>& intersections, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network);
+
+    bool isGetNodesOnSegment(const std::pair<int64_t, int64_t>& segmentNodeIds,
+                             const int64_t& startNodeId, const int64_t& endNodeId,
+                             const bool& isAddExtraNodeIds,
+                             std::vector<int64_t>& nodeIds,
+                             std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network);
+public:
+
+    struct s_PlannerParameters
+    {
+        double turnRadius_m = {0};
+    };
+
+
+
 
 protected:
 
-    /*! \brief  map from node ID to the planning node index*/
-    std::unordered_map<int64_t, int32_t> m_nodeIdVsPlanningIndex;
-    /*! \brief  map from planning node index ID to the node*/
-    std::shared_ptr<std::unordered_map<int32_t, int64_t> > m_planningIndexVsNodeId;
-    /*! \brief  storage for nodes*/
-    std::shared_ptr<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition>>> m_idVsNode;
-    /*! \brief  multimap relating way Id to it's Node Id's */
-    std::unordered_multimap<int64_t, int64_t> m_wayIdVsNodeId;
-    /*! \brief  map from segment begin/end node Ids to node Ids of the contained points */
-    std::unordered_multimap<std::pair<int64_t, int64_t>, std::unique_ptr<s_EdgeIds>, PairIdHash > m_nodeIdsVsEdgeNodeIds;
-    /*! \brief  map from node Id to segment begin/end node Ids */
-    std::unordered_multimap<int64_t, std::pair<int64_t, int64_t>> m_nodeIdVsSegmentBeginEndIds; //
-    /*! \brief  multimap from map cell to the node in the cell node, used to
-      find closest NodeId to a given North/East point. The cell is a north/east
-      pair, defined by dividing the North/East values by a cell length factor */
-    std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash > m_cellVsPlanningNodeIds;
-    std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash > m_cellVsAllNodeIds;
-    /*! \brief  used to convert Noth/East to cell Id's */
-    int32_t m_PositionToCellFactorNorth_m = 100;
-    int32_t m_PositionToCellFactorEast_m = 100;
-    int32_t m_northMin_m = 0;
-    int32_t m_eastMin_m = 0;
+
+
+
 
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::EntityConfiguration> > m_entityConfigurations;
 
@@ -263,9 +284,6 @@ protected:
     /*! \brief  the path to the the folder to save files*/
     std::string m_strSavePath;
 
-    std::vector<n_FrameworkLib::CEdge> m_edges; //uses node index
-    std::shared_ptr<Graph_t> m_graph;
-
     int32_t m_numberHighways = 0;
     int32_t m_numberNodes = 0;
     int32_t m_numberPlanningNodes = 0;
@@ -275,8 +293,9 @@ protected:
     double m_processPlanTime_s = 0.0;
 
 private:
-    bool isBuildFullPlot(const std::vector<int64_t>& highWayIds);
-
+    bool isBuildFullPlot(const std::vector<int64_t>& highWayIds, std::shared_ptr<s_roadNetworkContainer> network);
+    std::shared_ptr<s_roadNetworkContainer> m_defaultNetwork;
+    std::unordered_map<int64_t, std::shared_ptr<s_roadNetworkContainer>> m_entityIdVsRoadNetwork;
 
 
 };

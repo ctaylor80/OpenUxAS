@@ -47,6 +47,8 @@
 #define STRING_XML_SHORTEST_PATH_FILE "ShortestPathFile"
 #define STRING_XML_METRICS_FILE "MetricsFile"
 
+#define STRING_XML_ENTITY_OSM_OVERRIDE "OsmOverride"
+#define STRING_XML_ENTITY_ID "EntityId"
 
 #define CIRCLE_BOUNDARY_INCREMENT (_PI_O_10)
 
@@ -122,11 +124,32 @@ OsmPlannerService::configure(const pugi::xml_node& ndComponent)
         m_osmFileName = ndComponent.attribute(STRING_XML_OSM_FILE).value();
         UXAS_LOG_INFORM("**** Reading and processing OSM File [", m_osmFileName, "] ****");
 
-        isSuccessful = isBuildRoadGraphWithOsm(m_osmFileName);
+        auto network = isBuildRoadGraphWithOsm(m_osmFileName);
+        isSuccessful = network->isSuccess;
         if (!isSuccessful)
         {
             sstrErrors << "ERROR:: **OsmPlannerService::bConfigure failed: could build road graph with osmFileName[" << m_osmFileName << "]" << std::endl;
             std::cout << sstrErrors.str();
+        }
+    }
+    for (pugi::xml_node ndCurrent = ndComponent.first_child(); ndCurrent; ndCurrent = ndCurrent.next_sibling())
+    {
+        if (std::string(STRING_XML_ENTITY_OSM_OVERRIDE) == ndCurrent.name())
+        {
+            if (!ndCurrent.attribute(STRING_XML_OSM_FILE).empty() && !ndCurrent.attribute(STRING_XML_ENTITY_ID).empty())
+            {
+                auto osmFileName = ndCurrent.attribute(STRING_XML_OSM_FILE).value();
+                auto network = isBuildRoadGraphWithOsm(osmFileName);
+                auto vehicleId = ndCurrent.attribute(STRING_XML_ENTITY_ID).as_int64();
+                if (network->isSuccess)
+                {
+                    m_entityIdVsRoadNetwork[vehicleId] = network;
+                }
+                else
+                {
+                    UXAS_LOG_WARN("Failure to load road network ", osmFileName);
+                }
+            }
         }
     }
 
@@ -199,8 +222,9 @@ OsmPlannerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicatio
     }
     else if (uxas::messages::route::isEgressRouteRequest(receivedLmcpMessage->m_object))
     {
+        //assume this uses the main network
         auto egressResponse = std::make_shared<uxas::messages::route::EgressRouteResponse>();
-        if (bProcessEgressRequest(std::static_pointer_cast<uxas::messages::route::EgressRouteRequest>(receivedLmcpMessage->m_object), egressResponse))
+        if (bProcessEgressRequest(std::static_pointer_cast<uxas::messages::route::EgressRouteRequest>(receivedLmcpMessage->m_object), egressResponse, m_defaultNetwork))
         {
             auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(egressResponse);
             sendSharedLmcpObjectLimitedCastMessage(
@@ -225,7 +249,8 @@ OsmPlannerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicatio
 };
 
 bool OsmPlannerService::bProcessEgressRequest(const std::shared_ptr<uxas::messages::route::EgressRouteRequest>& egressRequest,
-                                              std::shared_ptr<uxas::messages::route::EgressRouteResponse>& egressResponse)
+                                              std::shared_ptr<uxas::messages::route::EgressRouteResponse>& egressResponse, 
+                                              std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     /*
     // TODO: make this real, send two vehicles to the cordon location
@@ -244,7 +269,7 @@ bool OsmPlannerService::bProcessEgressRequest(const std::shared_ptr<uxas::messag
                                      egressRequest->getStartLocation()->getLongitude() * n_Const::c_Convert::dDegreesToRadians(),
                                      egressRequest->getStartLocation()->getAltitude(), dummy);
 
-    findRoadIntersectionsOfCircle(center, egressRequest->getRadius(), intersections);
+    findRoadIntersectionsOfCircle(center, egressRequest->getRadius(), intersections, network);
 
     for (auto i : intersections)
     {
@@ -283,6 +308,11 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
             speed = 1.0;
         }
     }
+    auto graph = m_defaultNetwork;
+    if (m_entityIdVsRoadNetwork.find(routePlanRequest->getVehicleID()) != m_entityIdVsRoadNetwork.end())
+    {
+        graph = m_entityIdVsRoadNetwork[routePlanRequest->getVehicleID()];
+    }
 
     for (auto itRequest = routePlanRequest->getRouteRequests().begin();
             itRequest != routePlanRequest->getRouteRequests().end();
@@ -292,7 +322,8 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
         routePlan->setRouteID((*itRequest)->getRouteID());
         routePlan->setRouteCost(-1);
 
-        if (m_graph && m_planningIndexVsNodeId && m_idVsNode)
+
+        if (graph && graph->m_planningIndexVsNodeId && graph->m_idVsNode)
         {
             auto startTime = std::chrono::system_clock::now();
 
@@ -311,15 +342,15 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
             double lengthFromNodeToEnd(-1.0);
 
             // start node Id
-            bool isFoundNodeIdStart = isFindClosestNodeId(positionStart, m_cellVsPlanningNodeIds, nodeIdStart, lengthFromStartToNode);
+            bool isFoundNodeIdStart = isFindClosestNodeId(positionStart, graph->m_cellVsPlanningNodeIds, nodeIdStart, lengthFromStartToNode, graph);
             // end node Id
-            bool isFoundNodeIdEnd = isFindClosestNodeId(positionEnd, m_cellVsPlanningNodeIds, nodeIdEnd, lengthFromNodeToEnd);
+            bool isFoundNodeIdEnd = isFindClosestNodeId(positionEnd, graph->m_cellVsPlanningNodeIds, nodeIdEnd, lengthFromNodeToEnd, graph);
             if (isFoundNodeIdStart && isFoundNodeIdEnd)
             {
                 int32_t numberWaypoints(-1); // for metrics
                 int32_t pathCost(0);
                 std::deque<int64_t> pathNodeIds;
-                if (isFindShortestRoute(nodeIdStart, nodeIdEnd, pathCost, pathNodeIds))
+                if (isFindShortestRoute(nodeIdStart, nodeIdEnd, pathCost, pathNodeIds, graph))
                 {
                     float routCost = (static_cast<float> (lengthFromStartToNode) +
                             static_cast<float> (lengthFromNodeToEnd) +
@@ -359,14 +390,14 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
                             if (itNextPathNodeId != pathNodeIds.end())
                             {
                                 // find the planning edge
-                                auto itPlanningEdge = m_nodeIdsVsEdgeNodeIds.find(std::make_pair(*itPathNodeId, *itNextPathNodeId));
-                                if (itPlanningEdge != m_nodeIdsVsEdgeNodeIds.end())
+                                auto itPlanningEdge = graph->m_nodeIdsVsEdgeNodeIds.find(std::make_pair(*itPathNodeId, *itNextPathNodeId));
+                                if (itPlanningEdge != graph->m_nodeIdsVsEdgeNodeIds.end())
                                 {
                                     for (auto itNodeId = itPlanningEdge->second->m_nodeIds.begin(); itNodeId != itPlanningEdge->second->m_nodeIds.end(); itNodeId++)
                                     {
                                         // add each point of the section
-                                        auto itNewNode = m_idVsNode->find(*itNodeId);
-                                        if (itNewNode != m_idVsNode->end())
+                                        auto itNewNode = graph->m_idVsNode->find(*itNodeId);
+                                        if (itNewNode != graph->m_idVsNode->end())
                                         {
                                             //NOTE:: not setting AltitudeType, Number, NextWaypoint, Speed, SpeedType, ClimbRate, TurnType, VehicleActionList, ContingencyWaypointA, ContingencyWaypointB, AssociatedTasks
                                             //NOTE:: only setting Latitude, Longitude, Altitude  :)
@@ -402,8 +433,8 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
                             else
                             {
                                 // single node, just add it
-                                auto itNewNode = m_idVsNode->find(*itPathNodeId);
-                                if (itNewNode != m_idVsNode->end())
+                                auto itNewNode = graph->m_idVsNode->find(*itPathNodeId);
+                                if (itNewNode != graph->m_idVsNode->end())
                                 {
                                     //NOTE:: not setting AltitudeType, SpeedType, ClimbRate, VehicleActionList, ContingencyWaypointA, ContingencyWaypointB, AssociatedTasks
                                     //NOTE:: only setting Latitude, Longitude, Altitude, Number, NextWaypoint, Speed, TurnType  :)
@@ -470,10 +501,10 @@ bool OsmPlannerService::bProcessRoutePlanRequest(const std::shared_ptr<uxas::mes
                         }
                         for (; itNodeTwo != waypointNodeIds.end(); itNodeOne++, itNodeTwo++)
                         {
-                            auto itNode_1 = m_idVsNode->find(*itNodeOne);
-                            auto itNode_2 = m_idVsNode->find(*itNodeTwo);
-                            if ((itNode_1 != m_idVsNode->end()) &&
-                                    (itNode_2 != m_idVsNode->end()))
+                            auto itNode_1 = graph->m_idVsNode->find(*itNodeOne);
+                            auto itNode_2 = graph->m_idVsNode->find(*itNodeTwo);
+                            if ((itNode_1 != graph->m_idVsNode->end()) &&
+                                    (itNode_2 != graph->m_idVsNode->end()))
                             {
 
                                 shortestPathStream << *itNodeOne;
@@ -532,7 +563,8 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                                    std::shared_ptr<uxas::messages::route::RoadPointsResponse>& roadPointsResponse)
 {
     bool isSuccess(true);
-    if (m_graph && m_planningIndexVsNodeId && m_idVsNode)
+    auto graph = m_defaultNetwork;
+    if (graph && graph->m_planningIndexVsNodeId && graph->m_idVsNode)
     {
         roadPointsResponse->setResponseID(roadPointsRequest->getRequestID());
         for (auto itRequest = roadPointsRequest->getRoadPointsRequests().begin();
@@ -555,9 +587,9 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
 
             // 1) find closest nodes (from all nodes) to start and to end points
             // start node Id
-            isSuccess &= isFindClosestNodeId(positionStart, m_cellVsAllNodeIds, nodeIdStart, lengthFromStartToNode_m);
+            isSuccess &= isFindClosestNodeId(positionStart, graph->m_cellVsAllNodeIds, nodeIdStart, lengthFromStartToNode_m, graph);
             // end node Id
-            isSuccess &= isFindClosestNodeId(positionEnd, m_cellVsAllNodeIds, nodeIdEnd, lengthFromNodeToEnd_m);
+            isSuccess &= isFindClosestNodeId(positionEnd, graph->m_cellVsAllNodeIds, nodeIdEnd, lengthFromNodeToEnd_m, graph);
 
             if (isSuccess)
             {
@@ -567,10 +599,10 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
 
                 // 2) find the edges that these nodes are part of
                 // find all the segments with this node
-                auto itSegmentsStart = m_nodeIdVsSegmentBeginEndIds.equal_range(nodeIdStart);
-                auto itSegmentsEnd = m_nodeIdVsSegmentBeginEndIds.equal_range(nodeIdEnd);
-                if ((itSegmentsStart.first != m_nodeIdVsSegmentBeginEndIds.end()) &&
-                        (itSegmentsEnd.first != m_nodeIdVsSegmentBeginEndIds.end()))
+                auto itSegmentsStart = graph->m_nodeIdVsSegmentBeginEndIds.equal_range(nodeIdStart);
+                auto itSegmentsEnd = graph->m_nodeIdVsSegmentBeginEndIds.equal_range(nodeIdEnd);
+                if ((itSegmentsStart.first != graph->m_nodeIdVsSegmentBeginEndIds.end()) &&
+                        (itSegmentsEnd.first != graph->m_nodeIdVsSegmentBeginEndIds.end()))
                 {
                     // 3) if they are on the same edge, get the points in the correct direction and build a path, done
                     bool isSameEdge(false);
@@ -604,11 +636,11 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                         // find the edge where start nodeIdStart is before nodeIdEnd
 
                         if (!isGetNodesOnSegment(std::make_pair(edgeBeginNodeId, edgeEndNodeId),
-                                                 nodeIdStart, nodeIdEnd, true, fullPathNodeIds))
+                                                 nodeIdStart, nodeIdEnd, true, fullPathNodeIds, graph))
                         {
                             //try reverse edge
                             isGetNodesOnSegment(std::make_pair(edgeEndNodeId, edgeBeginNodeId),
-                                                nodeIdStart, nodeIdEnd, true, fullPathNodeIds);
+                                                nodeIdStart, nodeIdEnd, true, fullPathNodeIds, graph);
                         }
                         if (!fullPathNodeIds.empty())
                         {
@@ -617,8 +649,8 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                             lineOfInterest->setLineID((*itRequest)->getRoadPointsID());
                             for (auto roadNodeId : fullPathNodeIds)
                             {
-                                auto itNewNode = m_idVsNode->find(roadNodeId);
-                                if (itNewNode != m_idVsNode->end())
+                                auto itNewNode = graph->m_idVsNode->find(roadNodeId);
+                                if (itNewNode != graph->m_idVsNode->end())
                                 {
                                     afrl::cmasi::Location3D* loc = new afrl::cmasi::Location3D;
                                     loc->setLatitude(itNewNode->second->m_latitude_rad * n_Const::c_Convert::dRadiansToDegrees());
@@ -661,8 +693,8 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                         auto endSegmentNodeId_02 = itSegmentsEnd.first->second.second;
 
                         // TODO:: these are euclidean, need to get the distance along the path
-                        auto itNewNode = m_idVsNode->find(startSegmentNodeId_01);
-                        if (itNewNode != m_idVsNode->end())
+                        auto itNewNode = graph->m_idVsNode->find(startSegmentNodeId_01);
+                        if (itNewNode != graph->m_idVsNode->end())
                         {
                             distanceStartToStart_01 = positionStart.relativeDistance2D_m(*(itNewNode->second));
                         }
@@ -670,8 +702,8 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                         {
                             //TODO:: ERROR could not find node from id
                         }
-                        itNewNode = m_idVsNode->find(startSegmentNodeId_02);
-                        if (itNewNode != m_idVsNode->end())
+                        itNewNode = graph->m_idVsNode->find(startSegmentNodeId_02);
+                        if (itNewNode != graph->m_idVsNode->end())
                         {
                             distanceStartToStart_02 = positionStart.relativeDistance2D_m(*(itNewNode->second));
                         }
@@ -679,8 +711,8 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                         {
                             //TODO:: ERROR could not find node from id
                         }
-                        itNewNode = m_idVsNode->find(endSegmentNodeId_01);
-                        if (itNewNode != m_idVsNode->end())
+                        itNewNode = graph->m_idVsNode->find(endSegmentNodeId_01);
+                        if (itNewNode != graph->m_idVsNode->end())
                         {
                             distanceEndToEnd_01 = positionEnd.relativeDistance2D_m(*(itNewNode->second));
                         }
@@ -688,8 +720,8 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                         {
                             //TODO:: ERROR could not find node from id
                         }
-                        itNewNode = m_idVsNode->find(endSegmentNodeId_02);
-                        if (itNewNode != m_idVsNode->end())
+                        itNewNode = graph->m_idVsNode->find(endSegmentNodeId_02);
+                        if (itNewNode != graph->m_idVsNode->end())
                         {
                             distanceEndToEnd_02 = positionEnd.relativeDistance2D_m(*(itNewNode->second));
                         }
@@ -705,7 +737,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                         int32_t pathCost(INT32_MAX);
                         std::deque<int64_t> pathNodeIds;
                         std::deque<int64_t> pathNodeIdsFinal;
-                        if(isGetRoadPoints(startSegmentNodeId_01,endSegmentNodeId_01,pathCost,pathNodeIds))
+                        if(isGetRoadPoints(startSegmentNodeId_01,endSegmentNodeId_01,pathCost,pathNodeIds, graph))
                         {
                             pathCost += static_cast<int32_t> (distanceStartToStart_01 + distanceEndToEnd_01);
                             if (pathCost < pathCostFinal)
@@ -714,7 +746,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                 pathNodeIdsFinal = pathNodeIds;
                             }
                         }
-                        if(isGetRoadPoints(startSegmentNodeId_01,endSegmentNodeId_02,pathCost,pathNodeIds))
+                        if(isGetRoadPoints(startSegmentNodeId_01,endSegmentNodeId_02,pathCost,pathNodeIds, graph))
                         {
                             pathCost += static_cast<int32_t> (distanceStartToStart_01 + distanceEndToEnd_02);
                             if (pathCost < pathCostFinal)
@@ -723,7 +755,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                 pathNodeIdsFinal = pathNodeIds;
                             }
                         }
-                        if(isGetRoadPoints(startSegmentNodeId_02,endSegmentNodeId_01,pathCost,pathNodeIds))
+                        if(isGetRoadPoints(startSegmentNodeId_02,endSegmentNodeId_01,pathCost,pathNodeIds, graph))
                         {
                             pathCost += static_cast<int32_t> (distanceStartToStart_02 + distanceEndToEnd_01);
                             if (pathCost < pathCostFinal)
@@ -732,7 +764,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                 pathNodeIdsFinal = pathNodeIds;
                             }
                         }
-                        if(isGetRoadPoints(startSegmentNodeId_02,endSegmentNodeId_02,pathCost,pathNodeIds))
+                        if(isGetRoadPoints(startSegmentNodeId_02,endSegmentNodeId_02,pathCost,pathNodeIds, graph))
                         {
                             pathCost += static_cast<int32_t> (distanceStartToStart_02 + distanceEndToEnd_02);
                             if (pathCost < pathCostFinal)
@@ -758,7 +790,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
 
                             //UXAS_LOG_INFORM("[edgeBeginNodeId,edgeEndNodeId]=[" << edgeBeginNodeId << "," << edgeEndNodeId << "]");
                             if (isGetNodesOnSegment(std::make_pair(edgeBeginNodeId, edgeEndNodeId),
-                                                    nodeIdStart, edgeEndNodeId, false, fullPathNodeIds))
+                                                    nodeIdStart, edgeEndNodeId, false, fullPathNodeIds, graph))
                             {
                                 // 8) build plan from start node to end node
                                 auto itPathNodeIdLast = pathNodeIdsFinal.begin();
@@ -768,7 +800,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                     {
                                         std::vector<int64_t> segmentPathNodeIds;
                                         if (isGetNodesOnSegment(std::make_pair(*itPathNodeIdLast, *itPathNodeId),
-                                                                *itPathNodeIdLast, edgeEndNodeId, false, segmentPathNodeIds))
+                                                                *itPathNodeIdLast, edgeEndNodeId, false, segmentPathNodeIds, graph))
                                         {
                                             fullPathNodeIds.insert(fullPathNodeIds.end(), segmentPathNodeIds.begin(), segmentPathNodeIds.end());
                                         }
@@ -790,7 +822,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                 }
                                 std::vector<int64_t> segmentPathNodeIds;
                                 if (isGetNodesOnSegment(std::make_pair(edgeBeginNodeId, edgeEndNodeId),
-                                                        edgeBeginNodeId, nodeIdEnd, false, segmentPathNodeIds))
+                                                        edgeBeginNodeId, nodeIdEnd, false, segmentPathNodeIds, graph))
                                 {
                                     fullPathNodeIds.insert(fullPathNodeIds.end(), segmentPathNodeIds.begin(), segmentPathNodeIds.end());
                                 }
@@ -805,8 +837,8 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                                 lineOfInterest->setLineID((*itRequest)->getRoadPointsID());
                                 for (auto roadNodeId : fullPathNodeIds)
                                 {
-                                    auto itNewNode = m_idVsNode->find(roadNodeId);
-                                    if (itNewNode != m_idVsNode->end())
+                                    auto itNewNode = graph->m_idVsNode->find(roadNodeId);
+                                    if (itNewNode != graph->m_idVsNode->end())
                                     {
                                         afrl::cmasi::Location3D* loc = new afrl::cmasi::Location3D;
                                         loc->setLatitude(itNewNode->second->m_latitude_rad * n_Const::c_Convert::dRadiansToDegrees());
@@ -860,10 +892,10 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
                             }
                             for (; itNodeTwo != fullPathNodeIds.end(); itNodeOne++, itNodeTwo++)
                             {
-                                auto itNode_1 = m_idVsNode->find(*itNodeOne);
-                                auto itNode_2 = m_idVsNode->find(*itNodeTwo);
-                                if ((itNode_1 != m_idVsNode->end()) &&
-                                        (itNode_2 != m_idVsNode->end()))
+                                auto itNode_1 = graph->m_idVsNode->find(*itNodeOne);
+                                auto itNode_2 = graph->m_idVsNode->find(*itNodeTwo);
+                                if ((itNode_1 != graph->m_idVsNode->end()) &&
+                                        (itNode_2 != graph->m_idVsNode->end()))
                                 {
 
                                     shortestPathStream << *itNodeOne;
@@ -919,7 +951,7 @@ bool OsmPlannerService::isProcessRoadPointsRequest(const std::shared_ptr<uxas::m
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////        
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
 
-bool OsmPlannerService::isGetRoadPoints(const int64_t& startNodeId,const int64_t& endNodeId,int32_t& pathCost,std::deque<int64_t>& pathNodeIds)
+bool OsmPlannerService::isGetRoadPoints(const int64_t& startNodeId,const int64_t& endNodeId,int32_t& pathCost,std::deque<int64_t>& pathNodeIds, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     bool isSuccess{true};
     
@@ -927,7 +959,7 @@ bool OsmPlannerService::isGetRoadPoints(const int64_t& startNodeId,const int64_t
     pathNodeIds.clear();
     if (startNodeId != endNodeId)
     {
-        if (!isFindShortestRoute(startNodeId, endNodeId, pathCost, pathNodeIds))
+        if (!isFindShortestRoute(startNodeId, endNodeId, pathCost, pathNodeIds, network))
         {
             UXAS_LOG_ERROR("ERROR::isProcessRoadPointsRequest nodes on segment not found for edge Node IDs[", startNodeId, ",", endNodeId, "]");
             isSuccess = false;
@@ -944,23 +976,26 @@ bool OsmPlannerService::isGetRoadPoints(const int64_t& startNodeId,const int64_t
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////        
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
 
-bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
+std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
 {
-    bool isSuccess(true);
+
+    auto ret = std::shared_ptr<OsmPlannerService::s_roadNetworkContainer>();
+    ret->isSuccess = true;
+    //bool isSuccess(true);
 
     auto startTime = std::chrono::system_clock::now();
 
     uxas::common::utilities::CUnitConversions cUnitConversions;
 
-    m_wayIdVsNodeId.clear();
-    m_cellVsPlanningNodeIds.clear();
-    m_cellVsAllNodeIds.clear();
-    m_nodeIdsVsEdgeNodeIds.clear();
-    m_nodeIdVsPlanningIndex.clear();
-    m_planningIndexVsNodeId = std::make_shared<std::unordered_map<int32_t, int64_t> >();
+    //m_wayIdVsNodeId.clear();
+    //m_cellVsPlanningNodeIds.clear();
+    //m_cellVsAllNodeIds.clear();
+    //m_nodeIdsVsEdgeNodeIds.clear();
+    //m_nodeIdVsPlanningIndex.clear();
+    //m_planningIndexVsNodeId = std::make_shared<std::unordered_map<int32_t, int64_t> >();
 
-    m_idVsNode = std::make_shared<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition> > >();
-    m_edges.clear();
+    //m_idVsNode = std::make_shared<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition> > >();
+    //m_edges.clear();
 
     pugi::xml_document xmldocConfiguration;
     std::ifstream ifsOperatorXML(osmFile);
@@ -1019,7 +1054,7 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
                         for (auto itNode = nodes.begin(); itNode != nodes.end(); itNode++)
                         {
                             // save all of the nodes associated with the Highway)
-                            m_wayIdVsNodeId.insert(std::make_pair(wayId, *itNode));
+                            ret->m_wayIdVsNodeId.insert(std::make_pair(wayId, *itNode));
 
                             // add all of the nodes associated with highway
                             // set nodes used for planning to true, others to false.
@@ -1077,15 +1112,15 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
                     if (itIdVsPlanning != nodeIdVs_isPlanningNode.end())
                     {
                         // don't need to add it if it is already there
-                        auto itIdNode = m_idVsNode->find(nodeId);
-                        if (itIdNode == m_idVsNode->end())
+                        auto itIdNode = ret->m_idVsNode->find(nodeId);
+                        if (itIdNode == ret->m_idVsNode->end())
                         {
                             if (itIdVsPlanning->second) //it is a planning node
                             {
                                 planningNodeIds.insert(nodeId);
                                 planinngIndex++;
-                                m_nodeIdVsPlanningIndex[nodeId] = planinngIndex;
-                                m_planningIndexVsNodeId->insert(std::make_pair(planinngIndex, nodeId));
+                                ret->m_nodeIdVsPlanningIndex[nodeId] = planinngIndex;
+                                ret->m_planningIndexVsNodeId->insert(std::make_pair(planinngIndex, nodeId));
                             }
 
                             if (!ndCurrent.attribute("lat").empty())
@@ -1101,7 +1136,7 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
                                     northMin_m = (newNode->m_north_m < northMin_m) ? (newNode->m_north_m) : (northMin_m);
                                     eastMax_m = (newNode->m_east_m > eastMax_m) ? (newNode->m_east_m) : (eastMax_m);
                                     eastMin_m = (newNode->m_east_m < eastMin_m) ? (newNode->m_east_m) : (eastMin_m);
-                                    m_idVsNode->insert(std::make_pair(nodeId, std::move(newNode)));
+                                    ret->m_idVsNode->insert(std::make_pair(nodeId, std::move(newNode)));
                                 }
                                 else //if (!ndCurrent.attribute("lon").empty())
                                 {
@@ -1125,52 +1160,52 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
             int32_t extentNorth_m = static_cast<int32_t> (std::abs(std::round(northMax_m - northMin_m)));
             int32_t extentEast_m = static_cast<int32_t> (std::abs(std::round(eastMax_m - eastMin_m)));
 
-            if (isSuccess)
+            if (ret->isSuccess)
             {
-                isSuccess = isProcessHighwayNodes(nodeIdVs_isPlanningNode, highWayIds);
+                ret->isSuccess = isProcessHighwayNodes(nodeIdVs_isPlanningNode, highWayIds, ret);
             }
-            if (isSuccess)
+            if (ret->isSuccess)
             {
-                isSuccess = isBuildGraph(planningNodeIds, highWayIds);
+                ret->isSuccess = isBuildGraph(planningNodeIds, highWayIds, ret);
             }
-            if (isSuccess)
+            if (ret->isSuccess)
             {
-                isSuccess = isBuildFullPlot(highWayIds);
+                ret->isSuccess = isBuildFullPlot(highWayIds, ret);
             }
 
             // build the map of cells to nodes
-            m_PositionToCellFactorNorth_m = 100;
-            m_PositionToCellFactorEast_m = 100;
+            ret->m_PositionToCellFactorNorth_m = 100;
+            ret->m_PositionToCellFactorEast_m = 100;
             //                m_PositionToCellFactorNorth_m = extentNorth_m/10;     //1 km
             //                m_PositionToCellFactorNorth_m = (extentNorth_m < 100)?(100):(extentNorth_m);   // don't go less than 100
             //                m_PositionToCellFactorEast_m = extentEast_m/10; 
             //                m_PositionToCellFactorEast_m = (extentEast_m < 100)?(100):(extentEast_m);   // don't go less than 100
 
             // ALL NODES
-            for (auto itNode = m_idVsNode->begin(); itNode != m_idVsNode->end(); itNode++)
+            for (auto itNode = ret->m_idVsNode->begin(); itNode != ret->m_idVsNode->end(); itNode++)
             {
-                int32_t cellNorth_m = static_cast<int32_t> (itNode->second->m_north_m / m_PositionToCellFactorNorth_m);
-                int32_t cellEast_m = static_cast<int32_t> (itNode->second->m_east_m / m_PositionToCellFactorEast_m);
+                int32_t cellNorth_m = static_cast<int32_t> (itNode->second->m_north_m / ret->m_PositionToCellFactorNorth_m);
+                int32_t cellEast_m = static_cast<int32_t> (itNode->second->m_east_m / ret->m_PositionToCellFactorEast_m);
                 auto idCell = std::make_pair(cellNorth_m, cellEast_m);
-                m_cellVsAllNodeIds.insert(std::make_pair(idCell, itNode->first));
+                ret->m_cellVsAllNodeIds.insert(std::make_pair(idCell, itNode->first));
             }
             // PLANNING NODES
             for (auto itNodeId = planningNodeIds.begin(); itNodeId != planningNodeIds.end(); itNodeId++)
             {
-                auto itNode = m_idVsNode->find(*itNodeId);
-                if (itNode != m_idVsNode->end())
+                auto itNode = ret->m_idVsNode->find(*itNodeId);
+                if (itNode != ret->m_idVsNode->end())
                 {
-                    int32_t cellNorth_m = static_cast<int32_t> (itNode->second->m_north_m / m_PositionToCellFactorNorth_m);
-                    int32_t cellEast_m = static_cast<int32_t> (itNode->second->m_east_m / m_PositionToCellFactorEast_m);
+                    int32_t cellNorth_m = static_cast<int32_t> (itNode->second->m_north_m / ret->m_PositionToCellFactorNorth_m);
+                    int32_t cellEast_m = static_cast<int32_t> (itNode->second->m_east_m / ret->m_PositionToCellFactorEast_m);
                     auto idCell = std::make_pair(cellNorth_m, cellEast_m);
-                    m_cellVsPlanningNodeIds.insert(std::make_pair(idCell, *itNodeId));
+                    ret->m_cellVsPlanningNodeIds.insert(std::make_pair(idCell, *itNodeId));
                 }
             }
 
             m_numberHighways = highWayIds.size();
-            m_numberNodes = m_idVsNode->size();
+            m_numberNodes = ret->m_idVsNode->size();
             m_numberPlanningNodes = planningNodeIds.size();
-            m_numberPlanningEdges = m_edges.size();
+            m_numberPlanningEdges = ret->m_edges.size();
 
             auto endTime = std::chrono::system_clock::now();
             std::chrono::duration<double> elapsed_seconds = endTime - startTime;
@@ -1188,11 +1223,11 @@ bool OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
     {
         UXAS_LOG_ERROR("OSM FILE:: parse XML string failed for osmFile[", osmFile, "]");
     }
-    return (isSuccess);
+    return ret;
 }
 
 bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, bool>& nodeIdVs_isPlanningNode,
-                                              const std::vector<int64_t>& highWayIds)
+                                              const std::vector<int64_t>& highWayIds, const std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     bool isSuccess(true);
 
@@ -1200,13 +1235,13 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
     for (auto itHighway = highWayIds.begin(); itHighway != highWayIds.end(); itHighway++)
     {
         // the begin node for the 'planning' edge
-        auto itEdgeFirst = m_wayIdVsNodeId.end();
+        auto itEdgeFirst = network->m_wayIdVsNodeId.end();
         auto edgeIdsForward = std::unique_ptr<s_EdgeIds>(new s_EdgeIds);
         edgeIdsForward->m_highwayId = *itHighway;
         auto edgeIdsReverse = std::unique_ptr<s_EdgeIds>(new s_EdgeIds);
         edgeIdsReverse->m_highwayId = *itHighway;
 
-        auto itHighwayNodes = m_wayIdVsNodeId.equal_range(*itHighway);
+        auto itHighwayNodes = network->m_wayIdVsNodeId.equal_range(*itHighway);
 
         for (auto itHighwayNode = itHighwayNodes.first; itHighwayNode != itHighwayNodes.second; itHighwayNode++)
         {
@@ -1215,7 +1250,7 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
             {
                 if (itIsPlanningNode->second)
                 {
-                    if (itEdgeFirst == m_wayIdVsNodeId.end())
+                    if (itEdgeFirst == network->m_wayIdVsNodeId.end())
                     {
                         // found the start of a planning edge
                         itEdgeFirst = itHighwayNode;
@@ -1231,20 +1266,20 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
                         edgeIdsReverse->m_nodeIds.push_front(itHighwayNode->second);
 
                         auto idPairForward = std::make_pair(itEdgeFirst->second, itHighwayNode->second);
-                        auto itEdgeNodeIds = m_nodeIdsVsEdgeNodeIds.find(idPairForward);
-                        if (itEdgeNodeIds == m_nodeIdsVsEdgeNodeIds.end())
+                        auto itEdgeNodeIds = network->m_nodeIdsVsEdgeNodeIds.find(idPairForward);
+                        if (itEdgeNodeIds == network->m_nodeIdsVsEdgeNodeIds.end())
                         {
                             // found a new edge
-                            m_nodeIdsVsEdgeNodeIds.insert(std::make_pair(idPairForward, std::move(edgeIdsForward)));
+                            network->m_nodeIdsVsEdgeNodeIds.insert(std::make_pair(idPairForward, std::move(edgeIdsForward)));
                         }
 
                         //reverse
                         auto idPairReverse = std::make_pair(itHighwayNode->second, itEdgeFirst->second);
-                        itEdgeNodeIds = m_nodeIdsVsEdgeNodeIds.find(idPairReverse);
-                        if (itEdgeNodeIds == m_nodeIdsVsEdgeNodeIds.end())
+                        itEdgeNodeIds = network->m_nodeIdsVsEdgeNodeIds.find(idPairReverse);
+                        if (itEdgeNodeIds == network->m_nodeIdsVsEdgeNodeIds.end())
                         {
                             // found a new edge
-                            m_nodeIdsVsEdgeNodeIds.insert(std::make_pair(idPairReverse, std::move(edgeIdsReverse)));
+                            network->m_nodeIdsVsEdgeNodeIds.insert(std::make_pair(idPairReverse, std::move(edgeIdsReverse)));
                         }
 
                         // reset starting node
@@ -1260,7 +1295,7 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
                 }
                 else
                 {
-                    if (itEdgeFirst != m_wayIdVsNodeId.end())
+                    if (itEdgeFirst != network->m_wayIdVsNodeId.end())
                     {
                         // in the middle of a planning edge
                         edgeIdsForward->m_nodeIds.push_back(itHighwayNode->second);
@@ -1277,13 +1312,13 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
         } //for(auto itHighwayNode=itHighwayNodes->first;itHighwayNode!=itHighwayNodes->second;itHighwayNode++)
     } //for(auto itHighway=highWayIds.begin();itHighway!=highWayIds.end();itHighway++)
 
-    m_nodeIdVsSegmentBeginEndIds.clear();
+    network->m_nodeIdVsSegmentBeginEndIds.clear();
     UXAS_LOG_INFORM("Calculating segment begin/end ids ... ");
-    for (auto itEdgeNodeIds = m_nodeIdsVsEdgeNodeIds.begin(); itEdgeNodeIds != m_nodeIdsVsEdgeNodeIds.end(); itEdgeNodeIds++)
+    for (auto itEdgeNodeIds = network->m_nodeIdsVsEdgeNodeIds.begin(); itEdgeNodeIds != network->m_nodeIdsVsEdgeNodeIds.end(); itEdgeNodeIds++)
     {
         for (auto itNodeId = itEdgeNodeIds->second->m_nodeIds.begin(); itNodeId != itEdgeNodeIds->second->m_nodeIds.end(); itNodeId++)
         {
-            m_nodeIdVsSegmentBeginEndIds.insert(std::make_pair(*itNodeId, itEdgeNodeIds->first));
+            network->m_nodeIdVsSegmentBeginEndIds.insert(std::make_pair(*itNodeId, itEdgeNodeIds->first));
         }
     }
     UXAS_LOG_INFORM("complete");
@@ -1291,7 +1326,7 @@ bool OsmPlannerService::isProcessHighwayNodes(const std::unordered_map<int64_t, 
     return (isSuccess);
 }
 
-bool OsmPlannerService::isBuildFullPlot(const std::vector<int64_t>& highWayIds)
+bool OsmPlannerService::isBuildFullPlot(const std::vector<int64_t>& highWayIds, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     bool isSuccess(true);
     if (!m_mapEdgesFileName.empty())
@@ -1305,7 +1340,7 @@ bool OsmPlannerService::isBuildFullPlot(const std::vector<int64_t>& highWayIds)
 
             for (auto itWayId = highWayIds.begin(); itWayId != highWayIds.end(); itWayId++)
             {
-                auto nodeIds = m_wayIdVsNodeId.equal_range(*itWayId);
+                auto nodeIds = network->m_wayIdVsNodeId.equal_range(*itWayId);
                 // count nodes to put road label at center of road
                 int32_t numberHighwayNodes = std::distance(nodeIds.first, nodeIds.second);
                 ;
@@ -1313,7 +1348,7 @@ bool OsmPlannerService::isBuildFullPlot(const std::vector<int64_t>& highWayIds)
 
 
                 int32_t countNodes(0);
-                auto itLastNode(m_idVsNode->end());
+                auto itLastNode(network->m_idVsNode->end());
                 for (auto itNode = nodeIds.first; itNode != nodeIds.second; itNode++)
                 {
                     int32_t roadId(0);
@@ -1321,10 +1356,10 @@ bool OsmPlannerService::isBuildFullPlot(const std::vector<int64_t>& highWayIds)
                     {
                         roadId = *itWayId;
                     }
-                    auto itStartNode = m_idVsNode->find(itNode->second);
-                    if (itStartNode != m_idVsNode->end())
+                    auto itStartNode = network->m_idVsNode->find(itNode->second);
+                    if (itStartNode != network->m_idVsNode->end())
                     {
-                        if (itLastNode != m_idVsNode->end())
+                        if (itLastNode != network->m_idVsNode->end())
                         {
                             plotStream << itLastNode->first;
                             plotStream << ",";
@@ -1352,23 +1387,23 @@ bool OsmPlannerService::isBuildFullPlot(const std::vector<int64_t>& highWayIds)
 }
 
 bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planningNodeIds,
-                                     const std::vector<int64_t>& highWayIds)
+                                     const std::vector<int64_t>& highWayIds, std::shared_ptr<s_roadNetworkContainer> network)
 {
     bool isSuccess(true);
 
     //3) build edges
 
-    m_edges = std::vector<n_FrameworkLib::CEdge>();
+    network->m_edges = std::vector<n_FrameworkLib::CEdge>();
     int64_t currentWayId(-1);
     int32_t startIndex(-1);
 
-    auto itStartId(m_idVsNode->end());
+    auto itStartId(network->m_idVsNode->end());
 
     for (auto itWayId = highWayIds.begin(); itWayId != highWayIds.end(); itWayId++)
     {
-        auto nodeIds = m_wayIdVsNodeId.equal_range(*itWayId);
+        auto nodeIds = network->m_wayIdVsNodeId.equal_range(*itWayId);
         double runningLength_m(0.0);
-        auto itLastNode(m_idVsNode->end());
+        auto itLastNode(network->m_idVsNode->end());
         for (auto itNode = nodeIds.first; itNode != nodeIds.second; itNode++)
         {
             auto itPlanning = planningNodeIds.find(itNode->second);
@@ -1377,11 +1412,11 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
                 // this is a planning node
                 if (*itWayId != currentWayId)
                 {
-                    itStartId = m_idVsNode->find(itNode->second);
-                    if (itStartId != m_idVsNode->end())
+                    itStartId = network->m_idVsNode->find(itNode->second);
+                    if (itStartId != network->m_idVsNode->end())
                     {
-                        auto itStartIndex = m_nodeIdVsPlanningIndex.find(itNode->second);
-                        if (itStartIndex != m_nodeIdVsPlanningIndex.end())
+                        auto itStartIndex = network->m_nodeIdVsPlanningIndex.find(itNode->second);
+                        if (itStartIndex != network->m_nodeIdVsPlanningIndex.end())
                         {
                             currentWayId = *itWayId;
                             startIndex = itStartIndex->second;
@@ -1401,17 +1436,17 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
                 }
                 else //if(itWayNodeIds->first != currentWayId)
                 {
-                    auto itEndId = m_idVsNode->find(itNode->second);
-                    if (itEndId != m_idVsNode->end())
+                    auto itEndId = network->m_idVsNode->find(itNode->second);
+                    if (itEndId != network->m_idVsNode->end())
                     {
-                        auto itEndIndex = m_nodeIdVsPlanningIndex.find(itNode->second);
-                        if (itEndIndex != m_nodeIdVsPlanningIndex.end())
+                        auto itEndIndex = network->m_nodeIdVsPlanningIndex.find(itNode->second);
+                        if (itEndIndex != network->m_nodeIdVsPlanningIndex.end())
                         {
                             int64_t endIndex = itEndIndex->second;
                             //int64_t distance = static_cast<int64_t> (itStartId->second->relativeDistance2D_m(*(itEndId->second)));
                             int64_t distance = static_cast<int64_t> (itEndId->second->relativeDistance2D_m(*(itLastNode->second)) + runningLength_m);
 
-                            m_edges.push_back(n_FrameworkLib::CEdge(startIndex, endIndex, distance));
+                            network->m_edges.push_back(n_FrameworkLib::CEdge(startIndex, endIndex, distance));
                             UXAS_LOG_INFORM("startId[", itStartId->first, "] endId[", itEndId->first, "] distance[", distance, "]");
 
                             itStartId = itEndId;
@@ -1429,8 +1464,8 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
             }
             else //if(itPlanning != m_planningNodes.end())
             {
-                auto itCurrentNode = m_idVsNode->find(itNode->second);
-                if (itCurrentNode != m_idVsNode->end())
+                auto itCurrentNode = network->m_idVsNode->find(itNode->second);
+                if (itCurrentNode != network->m_idVsNode->end())
                 {
                     // add length of this segment to running total
                     runningLength_m += itCurrentNode->second->relativeDistance2D_m(*(itLastNode->second));
@@ -1445,15 +1480,14 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
     }
 
     std::vector<int32_t> edgeLengths;
-    edgeLengths.reserve(m_edges.size());
-    for (auto itEdge = m_edges.begin(); itEdge != m_edges.end(); itEdge++)
+    edgeLengths.reserve(network->m_edges.size());
+    for (auto itEdge = network->m_edges.begin(); itEdge != network->m_edges.end(); itEdge++)
     {
         edgeLengths.push_back(static_cast<int32_t> (itEdge->iGetLength()));
     }
 
-    m_graph = std::make_shared<Graph_t>(m_edges.begin(), m_edges.end(),
+    network->m_graph = std::make_shared<Graph_t>(network->m_edges.begin(), network->m_edges.end(),
             edgeLengths.begin(), planningNodeIds.size());
-
 #ifdef EUCLIDEAN_PLOT    
     if (!m_mapEdgesFileName.empty())
     {
@@ -1462,17 +1496,17 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
         {
             std::ofstream edgesStream(edgesPathFileName.c_str());
             edgesStream << "'node_id_1','edge_north_01','edge_east_01','edge_alt_01','node_id_2','edge_north_02','edge_east_02','edge_alt_02','edge_length_f'" << std::endl;
-            for (auto itEdge = m_edges.begin(); itEdge != m_edges.end(); itEdge++)
+            for (auto itEdge = network->m_edges.begin(); itEdge != network->m_edges.end(); itEdge++)
             {
-                auto itNodeId_1 = m_planningIndexVsNodeId->find(itEdge->first);
-                auto itNodeId_2 = m_planningIndexVsNodeId->find(itEdge->second);
-                if ((itNodeId_1 != m_planningIndexVsNodeId->end()) &&
-                        (itNodeId_2 != m_planningIndexVsNodeId->end()))
+                auto itNodeId_1 = network->m_planningIndexVsNodeId->find(itEdge->first);
+                auto itNodeId_2 = network->m_planningIndexVsNodeId->find(itEdge->second);
+                if ((itNodeId_1 != network->m_planningIndexVsNodeId->end()) &&
+                        (itNodeId_2 != network->m_planningIndexVsNodeId->end()))
                 {
-                    auto itNode_1 = m_idVsNode->find(itNodeId_1->second);
-                    auto itNode_2 = m_idVsNode->find(itNodeId_2->second);
-                    if ((itNode_1 != m_idVsNode->end()) &&
-                            (itNode_2 != m_idVsNode->end()))
+                    auto itNode_1 = network->m_idVsNode->find(itNodeId_1->second);
+                    auto itNode_2 = network->m_idVsNode->find(itNodeId_2->second);
+                    if ((itNode_1 != network->m_idVsNode->end()) &&
+                            (itNode_2 != network->m_idVsNode->end()))
                     {
                         edgesStream << itNodeId_1->second;
                         edgesStream << ",";
@@ -1497,35 +1531,36 @@ bool OsmPlannerService::isBuildGraph(const std::unordered_set<int64_t>& planning
 }
 
 bool OsmPlannerService::isFindShortestRoute(const int64_t& startNodeId, const int64_t& endNodeId,
-                                            int32_t& pathLength, std::deque<int64_t>& pathNodes)
+                                            int32_t& pathLength, std::deque<int64_t>& pathNodes,
+                                            std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     bool isSuccess(false);
 
     auto startTime = std::chrono::system_clock::now();
 
-    auto itStartNodeIndex = m_nodeIdVsPlanningIndex.find(startNodeId);
-    auto itEndNodeIndex = m_nodeIdVsPlanningIndex.find(endNodeId);
-    auto itEndNode = m_idVsNode->find(endNodeId);
+    auto itStartNodeIndex = network->m_nodeIdVsPlanningIndex.find(startNodeId);
+    auto itEndNodeIndex = network->m_nodeIdVsPlanningIndex.find(endNodeId);
+    auto itEndNode = network->m_idVsNode->find(endNodeId);
 
 
-    if ((itStartNodeIndex != m_nodeIdVsPlanningIndex.end()) &&
-            (itEndNodeIndex != m_nodeIdVsPlanningIndex.end()) &&
-            (itEndNode != m_idVsNode->end()))
+    if ((itStartNodeIndex != network->m_nodeIdVsPlanningIndex.end()) &&
+            (itEndNodeIndex != network->m_nodeIdVsPlanningIndex.end()) &&
+            (itEndNode != network->m_idVsNode->end()))
     {
         VertexDescriptor_t start(itStartNodeIndex->second);
         VertexDescriptor_t goal(itEndNodeIndex->second);
-        std::vector<int32_t> d(num_vertices(*m_graph));
+        std::vector<int32_t> d(num_vertices(*(network->m_graph)));
 
-        std::vector<VertexDescriptor_t> p(num_vertices(*m_graph));
+        std::vector<VertexDescriptor_t> p(num_vertices(*(network->m_graph)));
         try
         {
             // call astar named parameter interface
             boost::astar_search
-                    (*m_graph, start,
+                    (*(network->m_graph), start,
                      //manhattan_distance_heuristic(m_idVsNode,m_planningIndexVsNodeId,*(itEndNode->second)),
-                     euclidean_distance_heuristic(m_idVsNode, m_planningIndexVsNodeId, *(itEndNode->second)),
-                     predecessor_map(boost::make_iterator_property_map(p.begin(), boost::get(boost::vertex_index, *m_graph))).
-                     distance_map(boost::make_iterator_property_map(d.begin(), boost::get(boost::vertex_index, *m_graph))).
+                     euclidean_distance_heuristic(network->m_idVsNode, network->m_planningIndexVsNodeId, *(itEndNode->second)),
+                     predecessor_map(boost::make_iterator_property_map(p.begin(), boost::get(boost::vertex_index, *(network->m_graph)))).
+                     distance_map(boost::make_iterator_property_map(d.begin(), boost::get(boost::vertex_index, *(network->m_graph)))).
                      visitor(astar_goal_visitor(goal)));
         }
         catch (found_goal fg)
@@ -1535,8 +1570,8 @@ bool OsmPlannerService::isFindShortestRoute(const int64_t& startNodeId, const in
             pathLength = d[goal];
             for (VertexDescriptor_t v = goal;; v = p[v])
             {
-                auto itId = m_planningIndexVsNodeId->find(static_cast<int32_t> (v));
-                if (itId != m_planningIndexVsNodeId->end())
+                auto itId = network->m_planningIndexVsNodeId->find(static_cast<int32_t> (v));
+                if (itId != network->m_planningIndexVsNodeId->end())
                 {
                     pathNodes.push_front(itId->second);
 
@@ -1582,7 +1617,7 @@ bool OsmPlannerService::isFindShortestRoute(const int64_t& startNodeId, const in
 
 bool OsmPlannerService::isFindClosestNodeId(const n_FrameworkLib::CPosition& position,
                                             std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
-                                            int64_t& nodeId, double& length_m)
+                                            int64_t& nodeId, double& length_m, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     bool isFoundNewNode(false);
 
@@ -1590,8 +1625,8 @@ bool OsmPlannerService::isFindClosestNodeId(const n_FrameworkLib::CPosition& pos
     length_m = (std::numeric_limits<double>::max)();
 
     //calculate cell Id for the position
-    int32_t North_m = static_cast<int32_t> (position.m_north_m) / m_PositionToCellFactorNorth_m;
-    int32_t East_m = static_cast<int32_t> (position.m_east_m) / m_PositionToCellFactorEast_m;
+    int32_t North_m = static_cast<int32_t> (position.m_north_m) / network->m_PositionToCellFactorNorth_m;
+    int32_t East_m = static_cast<int32_t> (position.m_east_m) / network->m_PositionToCellFactorEast_m;
 
     int32_t numberIterations(0);
     bool isFinished(false);
@@ -1601,7 +1636,7 @@ bool OsmPlannerService::isFindClosestNodeId(const n_FrameworkLib::CPosition& pos
         int32_t NorthMax_m = North_m + numberIterations;
         int32_t EastMin_m = East_m - numberIterations;
         int32_t EastMax_m = East_m + numberIterations;
-        isFoundNewNode |= isExamineCellsInSquare(position, NorthMin_m, NorthMax_m, EastMin_m, EastMax_m, cellVsNodeIds, length_m, nodeId);
+        isFoundNewNode |= isExamineCellsInSquare(position, NorthMin_m, NorthMax_m, EastMin_m, EastMax_m, cellVsNodeIds, length_m, nodeId, network);
         // always check the central cell and the first square of surrounding cells
         if ((nodeId > 0) && (numberIterations > 0))
         {
@@ -1621,7 +1656,7 @@ bool OsmPlannerService::isExamineCellsInSquare(const n_FrameworkLib::CPosition& 
                                                const int32_t& northStart, const int32_t& northEnd,
                                                const int32_t& eastStart, const int32_t& eastEnd,
                                                std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
-                                               double& candidateLength_m, int64_t & candidateNodeId)
+                                               double& candidateLength_m, int64_t & candidateNodeId, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> container)
 {
     bool isFoundNewNode(false);
 
@@ -1634,9 +1669,9 @@ bool OsmPlannerService::isExamineCellsInSquare(const n_FrameworkLib::CPosition& 
         while ((localNorthStart <= northEnd))
         {
             // west side of square
-            isFoundNewNode |= isExamineCell(position, localNorthStart, eastStart, cellVsNodeIds, candidateLength_m, candidateNodeId);
+            isFoundNewNode |= isExamineCell(position, localNorthStart, eastStart, cellVsNodeIds, candidateLength_m, candidateNodeId, container);
             // east side of square
-            isFoundNewNode |= isExamineCell(position, localNorthStart, eastEnd, cellVsNodeIds, candidateLength_m, candidateNodeId);
+            isFoundNewNode |= isExamineCell(position, localNorthStart, eastEnd, cellVsNodeIds, candidateLength_m, candidateNodeId, container);
             localNorthStart += 1;
         }
         // west to east cells
@@ -1645,9 +1680,9 @@ bool OsmPlannerService::isExamineCellsInSquare(const n_FrameworkLib::CPosition& 
         while ((localEastStart <= eastEnd))
         {
             // north side of square
-            isFoundNewNode |= isExamineCell(position, northStart, localEastStart, cellVsNodeIds, candidateLength_m, candidateNodeId);
+            isFoundNewNode |= isExamineCell(position, northStart, localEastStart, cellVsNodeIds, candidateLength_m, candidateNodeId, container);
             // south side of square
-            isFoundNewNode |= isExamineCell(position, northEnd, localEastStart, cellVsNodeIds, candidateLength_m, candidateNodeId);
+            isFoundNewNode |= isExamineCell(position, northEnd, localEastStart, cellVsNodeIds, candidateLength_m, candidateNodeId, container);
             localEastStart += 1;
         }
     }
@@ -1658,7 +1693,7 @@ bool OsmPlannerService::isExamineCellsInSquare(const n_FrameworkLib::CPosition& 
 bool OsmPlannerService::isExamineCell(const n_FrameworkLib::CPosition& position,
                                       const int32_t& north, const int32_t& east,
                                       std::unordered_multimap<std::pair<int32_t, int32_t>, int64_t, PairIdHash >& cellVsNodeIds,
-                                      double& candidateLength_m, int64_t & candidateNodeId)
+                                      double& candidateLength_m, int64_t & candidateNodeId, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     bool isFoundNewNode(false);
 
@@ -1669,8 +1704,8 @@ bool OsmPlannerService::isExamineCell(const n_FrameworkLib::CPosition& position,
     {
         // - find the distance between the position and this node
         // - if it is shortest, then save the nodeId and Length        
-        auto itNode = m_idVsNode->find(itNodeId->second);
-        if (itNode != m_idVsNode->end())
+        auto itNode = network->m_idVsNode->find(itNodeId->second);
+        if (itNode != network->m_idVsNode->end())
         {
             double localLength_m = position.relativeDistance2D_m(*(itNode->second));
             if (localLength_m < candidateLength_m)
@@ -1692,14 +1727,14 @@ bool OsmPlannerService::isExamineCell(const n_FrameworkLib::CPosition& position,
 }
 
 void OsmPlannerService::findRoadIntersectionsOfCircle(const n_FrameworkLib::CPosition& center, const double& radius_m,
-                                                      std::vector<n_FrameworkLib::CPosition>& intersections)
+                                                      std::vector<n_FrameworkLib::CPosition>& intersections, std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     intersections.clear();
     //find all of the cells inside and containing the circle
-    int32_t northIdExtent = static_cast<int32_t> (center.m_north_m + radius_m) / m_PositionToCellFactorNorth_m;
-    int32_t eastIdExtent = static_cast<int32_t> (center.m_east_m + radius_m) / m_PositionToCellFactorEast_m;
-    int32_t southIdExtent = static_cast<int32_t> (center.m_north_m - radius_m) / m_PositionToCellFactorNorth_m;
-    int32_t westIdExtent = static_cast<int32_t> (center.m_east_m - radius_m) / m_PositionToCellFactorEast_m;
+    int32_t northIdExtent = static_cast<int32_t> (center.m_north_m + radius_m) / network->m_PositionToCellFactorNorth_m;
+    int32_t eastIdExtent = static_cast<int32_t> (center.m_east_m + radius_m) / network->m_PositionToCellFactorEast_m;
+    int32_t southIdExtent = static_cast<int32_t> (center.m_north_m - radius_m) / network->m_PositionToCellFactorNorth_m;
+    int32_t westIdExtent = static_cast<int32_t> (center.m_east_m - radius_m) / network->m_PositionToCellFactorEast_m;
 
     // want unique set of node iDs
     std::unordered_set<int64_t> nodeIds;
@@ -1711,8 +1746,8 @@ void OsmPlannerService::findRoadIntersectionsOfCircle(const n_FrameworkLib::CPos
         while ((eastId <= eastIdExtent))
         {
             auto idCell = std::make_pair(northId, eastId);
-            auto itCell = m_cellVsPlanningNodeIds.equal_range(idCell);
-            if (itCell.first != m_cellVsPlanningNodeIds.end())
+            auto itCell = network->m_cellVsPlanningNodeIds.equal_range(idCell);
+            if (itCell.first != network->m_cellVsPlanningNodeIds.end())
             {
                 for (auto itNodeId = itCell.first; itNodeId != itCell.second; itNodeId++)
                 {
@@ -1732,13 +1767,13 @@ void OsmPlannerService::findRoadIntersectionsOfCircle(const n_FrameworkLib::CPos
     for (auto itId = nodeIds.begin(); itId != nodeIds.end(); itId++)
     {
         // find all the segments with this node
-        auto itSegments = m_nodeIdVsSegmentBeginEndIds.equal_range(*itId);
-        if (itSegments.first != m_nodeIdVsSegmentBeginEndIds.end())
+        auto itSegments = network->m_nodeIdVsSegmentBeginEndIds.equal_range(*itId);
+        if (itSegments.first != network->m_nodeIdVsSegmentBeginEndIds.end())
         {
             for (auto itSegment = itSegments.first; itSegment != itSegments.second; itSegment++)
             {
-                auto itEdgeNodes = m_nodeIdsVsEdgeNodeIds.equal_range(itSegment->second);
-                if (itEdgeNodes.first != m_nodeIdsVsEdgeNodeIds.end())
+                auto itEdgeNodes = network->m_nodeIdsVsEdgeNodeIds.equal_range(itSegment->second);
+                if (itEdgeNodes.first != network->m_nodeIdsVsEdgeNodeIds.end())
                 {
                     for (auto itEdge = itEdgeNodes.first; itEdge != itEdgeNodes.second; itEdge++)
                     {
@@ -1747,9 +1782,9 @@ void OsmPlannerService::findRoadIntersectionsOfCircle(const n_FrameworkLib::CPos
                         for (; (itNodeIdFirst != itEdge->second->m_nodeIds.end())&&(itNodeIdSecond != itEdge->second->m_nodeIds.end());
                                 itNodeIdFirst++, itNodeIdSecond++)
                         {
-                            auto itNodeFirst = m_idVsNode->find(*itNodeIdFirst);
-                            auto itNodeSecond = m_idVsNode->find(*itNodeIdSecond);
-                            if ((itNodeFirst != m_idVsNode->end()) && (itNodeSecond != m_idVsNode->end()))
+                            auto itNodeFirst = network->m_idVsNode->find(*itNodeIdFirst);
+                            auto itNodeSecond = network->m_idVsNode->find(*itNodeIdSecond);
+                            if ((itNodeFirst != network->m_idVsNode->end()) && (itNodeSecond != network->m_idVsNode->end()))
                             {
                                 // check for intersection
                                 double distanceFirst = center.relativeDistance2D_m(*(itNodeFirst->second));
@@ -1809,12 +1844,13 @@ void OsmPlannerService::findRoadIntersectionsOfCircle(const n_FrameworkLib::CPos
 bool OsmPlannerService::isGetNodesOnSegment(const std::pair<int64_t, int64_t>& segmentNodeIds,
                                             const int64_t& startNodeId, const int64_t& endNodeId,
                                             const bool& isAddExtraNodeIds,
-                                            std::vector<int64_t>& nodeIds)
+                                            std::vector<int64_t>& nodeIds,
+                                            std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> network)
 {
     bool isSuccess(false);
 
-    auto itEdgeNodeIds = m_nodeIdsVsEdgeNodeIds.find(segmentNodeIds);
-    if (itEdgeNodeIds != m_nodeIdsVsEdgeNodeIds.end())
+    auto itEdgeNodeIds = network->m_nodeIdsVsEdgeNodeIds.find(segmentNodeIds);
+    if (itEdgeNodeIds != network->m_nodeIdsVsEdgeNodeIds.end())
     {
         auto edgeNodeIdLast = itEdgeNodeIds->second->m_nodeIds.begin();
         auto edgeNodeId = itEdgeNodeIds->second->m_nodeIds.begin();
