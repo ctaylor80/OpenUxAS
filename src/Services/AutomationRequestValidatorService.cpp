@@ -223,6 +223,23 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
         auto servStatus = std::static_pointer_cast<afrl::cmasi::ServiceStatus>(receivedLmcpMessage->m_object);
             for (auto kv : servStatus->getInfo())
             {
+                if (kv->getKey().compare("flush validator") == 0)
+                {
+                    //send a flush failure for each request in the pipeline.
+                    auto count = 0;
+                    while (!m_pendingRequests.empty())
+                    {
+                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> toFlush = m_pendingRequests.front();
+                        m_pendingRequests.pop_front();
+
+                        sendResponseError(toFlush, "Manually flushed.");
+                        count += 1;
+                    }
+                    IMPACT_INFORM("Manually flushed ", count, " waiting requests");
+
+                    m_pendingRequests.clear();
+                    m_requestsWaitingForTasks.clear();
+                }
                 if (kv->getKey().compare("No UniqueAutomationResponse") == 0)
                 {
                     if (!m_pendingRequests.empty())
