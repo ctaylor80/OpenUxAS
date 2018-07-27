@@ -254,7 +254,6 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                             {
                                 m_requestsWaitingForTasks.pop_front();
                                 sendResponseError(request, kv->getValue());
-                                IMPACT_INFORM("Caught another!");
                             }
                             else
                                 break;
