@@ -187,9 +187,9 @@ protected:
         /*! \brief  map from node ID to the planning node index*/
         std::unordered_map<int64_t, int32_t> m_nodeIdVsPlanningIndex;
         /*! \brief  map from planning node index ID to the node*/
-        std::shared_ptr<std::unordered_map<int32_t, int64_t> > m_planningIndexVsNodeId;
+        std::shared_ptr<std::unordered_map<int32_t, int64_t> > m_planningIndexVsNodeId = std::make_shared<std::unordered_map<int32_t, int64_t> >();
         /*! \brief  storage for nodes*/
-        std::shared_ptr<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition>>> m_idVsNode;
+        std::shared_ptr<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition>>> m_idVsNode = std::make_shared<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition> > >();
         /*! \brief  multimap relating way Id to it's Node Id's */
         std::unordered_multimap<int64_t, int64_t> m_wayIdVsNodeId;
         /*! \brief  map from segment begin/end node Ids to node Ids of the contained points */

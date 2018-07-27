@@ -48,7 +48,7 @@
 #define STRING_XML_METRICS_FILE "MetricsFile"
 
 #define STRING_XML_ENTITY_OSM_OVERRIDE "OsmOverride"
-#define STRING_XML_ENTITY_ID "EntityId"
+#define STRING_XML_ENTITY_ID "EntityID"
 
 #define CIRCLE_BOUNDARY_INCREMENT (_PI_O_10)
 
@@ -124,8 +124,8 @@ OsmPlannerService::configure(const pugi::xml_node& ndComponent)
         m_osmFileName = ndComponent.attribute(STRING_XML_OSM_FILE).value();
         UXAS_LOG_INFORM("**** Reading and processing OSM File [", m_osmFileName, "] ****");
 
-        auto network = isBuildRoadGraphWithOsm(m_osmFileName);
-        isSuccessful = network->isSuccess;
+        m_defaultNetwork = isBuildRoadGraphWithOsm(m_osmFileName);
+        isSuccessful = m_defaultNetwork->isSuccess;
         if (!isSuccessful)
         {
             sstrErrors << "ERROR:: **OsmPlannerService::bConfigure failed: could build road graph with osmFileName[" << m_osmFileName << "]" << std::endl;
@@ -979,23 +979,12 @@ bool OsmPlannerService::isGetRoadPoints(const int64_t& startNodeId,const int64_t
 std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> OsmPlannerService::isBuildRoadGraphWithOsm(const string & osmFile)
 {
 
-    auto ret = std::shared_ptr<OsmPlannerService::s_roadNetworkContainer>();
+    auto ret = std::make_shared<OsmPlannerService::s_roadNetworkContainer>();
     ret->isSuccess = true;
-    //bool isSuccess(true);
 
     auto startTime = std::chrono::system_clock::now();
 
     uxas::common::utilities::CUnitConversions cUnitConversions;
-
-    //m_wayIdVsNodeId.clear();
-    //m_cellVsPlanningNodeIds.clear();
-    //m_cellVsAllNodeIds.clear();
-    //m_nodeIdsVsEdgeNodeIds.clear();
-    //m_nodeIdVsPlanningIndex.clear();
-    //m_planningIndexVsNodeId = std::make_shared<std::unordered_map<int32_t, int64_t> >();
-
-    //m_idVsNode = std::make_shared<std::unordered_map<int64_t, std::unique_ptr<n_FrameworkLib::CPosition> > >();
-    //m_edges.clear();
 
     pugi::xml_document xmldocConfiguration;
     std::ifstream ifsOperatorXML(osmFile);
@@ -1176,10 +1165,6 @@ std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> OsmPlannerService::is
             // build the map of cells to nodes
             ret->m_PositionToCellFactorNorth_m = 100;
             ret->m_PositionToCellFactorEast_m = 100;
-            //                m_PositionToCellFactorNorth_m = extentNorth_m/10;     //1 km
-            //                m_PositionToCellFactorNorth_m = (extentNorth_m < 100)?(100):(extentNorth_m);   // don't go less than 100
-            //                m_PositionToCellFactorEast_m = extentEast_m/10; 
-            //                m_PositionToCellFactorEast_m = (extentEast_m < 100)?(100):(extentEast_m);   // don't go less than 100
 
             // ALL NODES
             for (auto itNode = ret->m_idVsNode->begin(); itNode != ret->m_idVsNode->end(); itNode++)
@@ -1977,15 +1962,6 @@ void OsmPlannerService::savePythonPlotCode()
     pythonFileStream << "    main()" << std::endl;
     pythonFileStream.close();
 }
-
-
-
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 }; //namespace service
 }; //namespace uxas
