@@ -147,10 +147,18 @@ PlanBuilderService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
         auto firstMiss = uniqueAutomationResponseIter->second->getOriginalResponse()->getMissionCommandList().front();
         auto firstRoutes = routeResponse->getRouteResponses().front();
 
-        firstMiss->getWaypointList().back()->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 1);
+        auto lastWaypointBeforeConnection = firstMiss->getWaypointList().back();
+        lastWaypointBeforeConnection->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 1);
+
         for (auto wp : firstRoutes->getWaypoints())
         {
             auto clonedWp = wp->clone();
+
+            clonedWp->setSpeed(lastWaypointBeforeConnection->getSpeed());
+            clonedWp->setSpeedType(lastWaypointBeforeConnection->getSpeedType());
+            clonedWp->setAltitude(lastWaypointBeforeConnection->getAltitude());
+            clonedWp->setAltitudeType(lastWaypointBeforeConnection->getAltitudeType());
+
             clonedWp->setNumber(firstMiss->getWaypointList().back()->getNumber() + 1);
             clonedWp->setNextWaypoint(firstMiss->getWaypointList().back()->getNumber() + 2);
             firstMiss->getWaypointList().push_back(clonedWp);
