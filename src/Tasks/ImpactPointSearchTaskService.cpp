@@ -35,6 +35,7 @@
 #include <afrl/cmasi/GimbalConfiguration.h>
 #include <avtas/lmcp/LmcpXMLReader.h>
 #include <BatchSummaryService.h>
+#include <afrl/vehicles/GroundVehicleConfiguration.h>
 
 #define COUT_FILE_LINE_MSG(MESSAGE) std::cout << "IMPCT_PS-IMPCT_PS-IMPCT_PS-IMPCT_PS:: ImpactPointSearch:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cout.flush();
 #define CERR_FILE_LINE_MSG(MESSAGE) std::cerr << "IMPCT_PS-IMPCT_PS-IMPCT_PS-IMPCT_PS:: ImpactPointSearch:" << __FILE__ << ":" << __LINE__ << ":" << MESSAGE << std::endl;std::cerr.flush();
@@ -229,12 +230,14 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t entityID, con
 
     auto tmpLoc = std::shared_ptr<afrl::cmasi::Location3D>(m_pointSearchTask->getDesiredAction()->getLocation()->clone());
     auto config = m_entityConfigurations.find(entityID) != m_entityConfigurations.end() ? m_entityConfigurations[entityID] : nullptr;
-    if (BatchSummaryService::AttemptMoveOutsideKoz(tmpLoc, m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier, config, m_KeepOutZoneIDVsPolygon))
+    if (!afrl::vehicles::isGroundVehicleConfiguration(config.get()))
     {
+      if (BatchSummaryService::AttemptMoveOutsideKoz(tmpLoc, m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier, config, m_KeepOutZoneIDVsPolygon))
+      {
         UXAS_LOG_WARN("ImpactPointSearchTask Loiter Inside of KeepOutZone. Attempted to move point.");
         m_pointSearchTask->getDesiredAction()->setLocation(tmpLoc->clone());
+      }
     }
-
 
     if (n_Const::c_Convert::bCompareDouble(standoffDistance, 0.0, n_Const::c_Convert::enLessEqual))
     {
