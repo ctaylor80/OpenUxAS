@@ -257,4 +257,8 @@ private:
 }; //namespace common
 }; //namespace uxas
 
+#ifdef _WIN32
+#undef noexcept
+#endif
+
 #endif /* UXAS_COMMON_TIMER_MANAGER_H */
