@@ -91,9 +91,10 @@ void DynamicTaskServiceBase::buildTaskPlanOptions()
             auto targetLocation = calculateTargetLocation(state);
             if (afrl::cmasi::isAirVehicleConfiguration(config.get()))
             {
+                auto kozs = getVehicleSpecificKozs(config, 0);
                 auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
                 auto radius = loiterRadiusFromConfig(airVehicleConfig);
-                BatchSummaryService::AttemptMoveOutsideKoz(targetLocation, radius * 1.5, config, m_KeepOutZoneIDVsPolygon);
+                BatchSummaryService::AttemptMoveOutsideKoz(targetLocation, radius * 1.5, config, kozs);
             }
             auto taskOption = new uxas::messages::task::TaskOption;
             taskOption->setTaskID(taskId);
@@ -289,7 +290,9 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
             //use an extra offset to avoid jagged KOZs
             auto bufferMultiplier = 1.5;
             auto loiterRadius = loiterRadiusFromConfig(airVehicleConfig);
-            BatchSummaryService::AttemptMoveOutsideKoz(loc, loiterRadius * bufferMultiplier, config, m_KeepOutZoneIDVsPolygon);
+            //TODO: check operating region
+            auto kozs = getVehicleSpecificKozs(config, 0);
+            BatchSummaryService::AttemptMoveOutsideKoz(loc, loiterRadius * bufferMultiplier, config, kozs);
         }
 
         m_targetLocations[entityState->getID()] = loc;
@@ -419,6 +422,39 @@ double DynamicTaskServiceBase::loiterRadiusFromConfig(std::shared_ptr<afrl::cmas
         radius = std::ceil(radius / 100.0)*100.0;
         return radius;
     }
+
+std::unordered_map<int64_t, std::shared_ptr<BatchSummaryService::ZonePair>> DynamicTaskServiceBase::getVehicleSpecificKozs(std::shared_ptr<afrl::cmasi::EntityConfiguration> vehicleConfig, int64_t operatingRegionId)
+{
+    //build list of keep out zones
+    auto kozs = std::unordered_map<int64_t, std::shared_ptr<BatchSummaryService::ZonePair>>();
+    auto epsilon = 1e-3;
+    auto id = vehicleConfig->getID();
+    if (m_OperatingRegions.find(operatingRegionId) == m_OperatingRegions.end())
+        return m_KeepOutZoneIDVsPolygon; //use every KOZ
+
+    auto operatingRegion = m_OperatingRegions[operatingRegionId];
+
+    for (auto rozID : operatingRegion->getKeepOutAreas())
+    {
+        if (m_KeepOutZoneIDVsPolygon.find(rozID) == m_KeepOutZoneIDVsPolygon.end())
+            continue;
+
+        auto koz = m_KeepOutZoneIDVsPolygon[rozID];
+
+        auto lmcpZone = koz->LmcpZone;
+        if (!lmcpZone->getAffectedAircraft().empty() &&
+            std::find_if(lmcpZone->getAffectedAircraft().begin(), lmcpZone->getAffectedAircraft().end(),
+                [&](const int64_t entityId) {return entityId == id; }) == lmcpZone->getAffectedAircraft().end())
+            continue;
+        if ((lmcpZone->getMinAltitude() > vehicleConfig->getNominalAltitude() || lmcpZone->getMaxAltitude() < vehicleConfig->getNominalAltitude()) &&
+            !(abs(lmcpZone->getMinAltitude()) < epsilon && abs(lmcpZone->getMaxAltitude()) < epsilon))
+            continue;
+        kozs[koz->LmcpZone->getZoneID()] = koz;
+
+    }
+
+    return kozs;
+}
 
 }
 }
