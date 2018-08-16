@@ -20,13 +20,6 @@
 #include "Position.h"
 #include "FileSystemUtilities.h"
 
-#include "uxas/messages/task/TaskImplementationResponse.h"
-#include "uxas/messages/task/TaskOption.h"
-#include "uxas/messages/route/ROUTE.h"
-#include "uxas/messages/route/RouteConstraints.h"
-#include "uxas/messages/route/EgressRouteRequest.h"
-#include "uxas/messages/route/EgressRouteResponse.h"
-
 #include "pugixml.hpp"
 #include "Constants/Convert.h"
 #include "Permute.h"
@@ -275,6 +268,16 @@ bool CordonTaskService::isProcessTaskImplementationRouteResponse(std::shared_ptr
     int64_t& waypointId, std::shared_ptr<uxas::messages::route::RoutePlan>& route)
 {
     m_vehiclesUsed.insert(taskImplementationResponse->getVehicleID());
+
+    if (taskImplementationResponse->getTaskWaypoints().empty())
+        return false;
+    auto lastWp = taskImplementationResponse->getTaskWaypoints().back();
+    auto loiter = std::make_shared<afrl::cmasi::LoiterAction>();
+    loiter->setLoiterType(afrl::cmasi::LoiterType::VehicleDefault);
+    loiter->setLocation(lastWp->clone());
+    loiter->getAssociatedTaskList().push_back(m_cordonTask->getTaskID());
+
+    lastWp->getVehicleActionList().push_back(loiter->clone());
     return false;
 }
 void CordonTaskService::buildTaskPlanOptionsAfterEgressResponses()

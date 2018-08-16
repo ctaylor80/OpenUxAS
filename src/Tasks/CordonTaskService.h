@@ -23,10 +23,17 @@
 #include "uxas/messages/task/SensorFootprintRequests.h"
 #include "uxas/messages/route/RouteRequest.h"
 #include "afrl/impact/CordonTask.h"
+#include "uxas/messages/task/TaskImplementationResponse.h"
+#include "uxas/messages/task/TaskOption.h"
+#include "uxas/messages/route/ROUTE.h"
+#include "uxas/messages/route/RouteConstraints.h"
+#include "uxas/messages/route/EgressRouteRequest.h"
+#include "uxas/messages/route/EgressRouteResponse.h"
 
 #include <cstdint> // int64_t
 #include <unordered_map>
 #include <uxas/messages/route/EgressRouteResponse.h>
+#include <afrl/cmasi/LoiterAction.h>
 
 namespace uxas
 {
