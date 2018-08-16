@@ -280,16 +280,17 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
 
         m_targetStarePoints[entityState->getID()] = std::shared_ptr<afrl::cmasi::Location3D>(loc->clone());
 
-        //check if the target location would intersect a KOZ. Attempt move. Only for Air Vehicles
-        if (afrl::cmasi::isAirVehicleState(cast) &&
+        //check if the target location would intersect a KOZ. Attempt move. Only for Air and surface Vehicles
+        if ((afrl::cmasi::isAirVehicleState(cast) || afrl::vehicles::isSurfaceVehicleState(cast)) &&
             m_entityConfigurations.find(entityState->getID()) != m_entityConfigurations.end())
         {
 
             auto config = m_entityConfigurations[entityState->getID()];
-            auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
+            auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::EntityConfiguration>(config);
             //use an extra offset to avoid jagged KOZs
             auto bufferMultiplier = 1.5;
             auto loiterRadius = loiterRadiusFromConfig(airVehicleConfig);
+
             //TODO: check operating region
             auto kozs = getVehicleSpecificKozs(config, 0);
             BatchSummaryService::AttemptMoveOutsideKoz(loc, loiterRadius * bufferMultiplier, config, kozs);
@@ -411,7 +412,7 @@ std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calcu
     return vehicleActionCommand;
 }
 
-double DynamicTaskServiceBase::loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> config)
+double DynamicTaskServiceBase::loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::EntityConfiguration> config)
     {
         double speed = config->getNominalSpeed();
         double bank = 25.0 * n_Const::c_Convert::dDegreesToRadians();

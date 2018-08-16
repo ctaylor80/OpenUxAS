@@ -59,9 +59,10 @@ BlockadeTaskService::ServiceBase::CreationRegistrar<BlockadeTaskService>
 BlockadeTaskService::s_registrar(BlockadeTaskService::s_registryServiceTypeNames());
 
 BlockadeTaskService::BlockadeTaskService()
-: TaskServiceBase(BlockadeTaskService::s_typeName(), BlockadeTaskService::s_directoryName())
+: DynamicTaskServiceBase(BlockadeTaskService::s_typeName(), BlockadeTaskService::s_directoryName())
 {
     m_taskCompletes = false;
+    m_straightLineThreshold_m = 10;
 };
 
 BlockadeTaskService::~BlockadeTaskService()
@@ -69,7 +70,7 @@ BlockadeTaskService::~BlockadeTaskService()
 };
 
 bool
-BlockadeTaskService::configureTask(const pugi::xml_node& ndComponent)
+BlockadeTaskService::configureDynamicTask(const pugi::xml_node& ndComponent)
 
 {
     std::string strBasePath = m_workDirectoryPath;
@@ -107,8 +108,7 @@ BlockadeTaskService::configureTask(const pugi::xml_node& ndComponent)
     return (isSuccessful);
 }
 
-bool
-BlockadeTaskService::processReceivedLmcpMessageTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
+bool BlockadeTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject)
 //example: if (afrl::cmasi::isServiceStatus(receivedLmcpMessage->m_object.get()))
 {
     std::stringstream sstrError;
@@ -181,15 +181,18 @@ bool BlockadeTaskService::isCalculateOption(const int64_t& taskId, int64_t & opt
 {
     bool isSuccessful{true};
 
-    if (m_blockedEntityStateLast)
+    if (m_blockedEntityStateLast && m_entityStates.find(optionId) != m_entityStates.end())
     {
+        auto state = m_entityStates[optionId];
+        auto target = calculateTargetLocation(state);
+
         auto taskOption = new uxas::messages::task::TaskOption;
         taskOption->getEligibleEntities().push_back(optionId); // note: this task enforces optionId == entityId
         taskOption->setTaskID(taskId);
         taskOption->setOptionID(optionId);
-        taskOption->setStartLocation(m_blockedEntityStateLast->getLocation()->clone());
+        taskOption->setStartLocation(target->clone());
         taskOption->setStartHeading(m_blockedEntityStateLast->getHeading());
-        taskOption->setEndLocation(m_blockedEntityStateLast->getLocation()->clone());
+        taskOption->setEndLocation(target->clone());
         taskOption->setEndHeading(m_blockedEntityStateLast->getHeading());
         auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
         m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
@@ -205,7 +208,7 @@ bool BlockadeTaskService::isCalculateOption(const int64_t& taskId, int64_t & opt
     return (isSuccessful);
 }
 
-void BlockadeTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::EntityState>& entityState)
+std::shared_ptr<afrl::cmasi::Location3D> BlockadeTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
 {
     // we are at an active waypoint
     if (m_blockedEntityStateLast)
@@ -249,45 +252,37 @@ void BlockadeTaskService::activeEntityState(const std::shared_ptr<afrl::cmasi::E
         double lat, lon;
         flatEarth.ConvertNorthEast_mToLatLong_deg(north, east, lat, lon);
 
-        // at this point, all neighbors have valid positions and are considered cooperating on task
-        auto actionCommand = CalculateGimbalActions(entityState, lat, lon);
+        auto loc = std::make_shared<afrl::cmasi::Location3D>();
+        loc->setLatitude(lat);
+        loc->setLongitude(lon);
+        loc->setAltitude(entityState->getLocation()->getAltitude());
+        loc->setAltitudeType(entityState->getLocation()->getAltitudeType());
 
-        // build mini-mission of two waypoint with hover action at end
-        auto missionCommand = new afrl::cmasi::MissionCommand;
-        missionCommand->setCommandID(getUniqueEntitySendMessageId());
-        missionCommand->setFirstWaypoint(1);
-        missionCommand->setVehicleID(entityState->getID());
-        auto wp = new afrl::cmasi::Waypoint;
-        wp->setAltitude(entityState->getLocation()->getAltitude());
-        wp->setAltitudeType(entityState->getLocation()->getAltitudeType());
-        wp->setLatitude(lat);
-        wp->setLongitude(lon);
-        wp->setNextWaypoint(2);
-        wp->setNumber(1);
-        wp->setSpeed(speed);
-        wp->setTurnType(afrl::cmasi::TurnType::TurnShort);
-        wp->getAssociatedTasks().push_back(m_task->getTaskID());
-        missionCommand->getWaypointList().push_back(wp);
-
-        wp = wp->clone();
-        wp->setNumber(2);
-
-        for (size_t a = 0; a < actionCommand->getVehicleActionList().size(); a++)
-        {
-            auto act = actionCommand->getVehicleActionList().at(a);
-            wp->getVehicleActionList().push_back(act->clone());
-        }
-        missionCommand->getWaypointList().push_back(wp);
-
-        //auto pResponse = std::static_pointer_cast<avtas::lmcp::Object>(actionCommand);
-        auto pResponse = std::shared_ptr<avtas::lmcp::Object>(missionCommand);
-        sendSharedLmcpObjectBroadcastMessage(pResponse);
+        return loc;
     }
     else
     {
         CERR_FILE_LINE_MSG("ERROR::Task_BlockadeTask:: no watchedEntityState found for Entity[" << m_blockadeTask->getBlockedEntityID() << "]")
+            return std::shared_ptr<afrl::cmasi::Location3D>(entityState->getLocation()->clone());
     }
 }
+void BlockadeTaskService::processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand> miss)
+{
+
+    //insert an extra wp for AMASEt
+    if (miss->getWaypointList().empty())
+        return;
+    auto lastWp = miss->getWaypointList().back();
+
+    auto newLastWp = lastWp->clone();
+    newLastWp->setNumber(lastWp->getNumber() + 1);
+    newLastWp->setNextWaypoint(lastWp->getNumber() + 1);
+    lastWp->setNextWaypoint(newLastWp->getNumber());
+    lastWp->getVehicleActionList().clear();
+
+    miss->getWaypointList().push_back(newLastWp);
+}
+
 
 std::shared_ptr<afrl::cmasi::VehicleActionCommand> BlockadeTaskService::CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon)
 {

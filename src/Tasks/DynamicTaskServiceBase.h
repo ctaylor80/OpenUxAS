@@ -29,6 +29,7 @@
 #include "afrl/cmasi/AirVehicleConfiguration.h"
 #include "afrl/cmasi/OperatingRegion.h"
 #include "BatchSummaryService.h"
+#include "afrl/vehicles/SurfaceVehicleState.h"
 
 namespace uxas
 {
@@ -74,7 +75,7 @@ private :
     //helper methods
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc);
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> calculateLoiterAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, std::shared_ptr<afrl::cmasi::Location3D> loc);
-    double loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::AirVehicleConfiguration> config);
+    double loiterRadiusFromConfig(std::shared_ptr<afrl::cmasi::EntityConfiguration> config);
     std::unordered_map<int64_t, std::shared_ptr<BatchSummaryService::ZonePair>> getVehicleSpecificKozs(std::shared_ptr<afrl::cmasi::EntityConfiguration> vehicleConfig, int64_t operatingRegionId);
     
     std::unordered_map<int64_t, int64_t> m_throttle;
