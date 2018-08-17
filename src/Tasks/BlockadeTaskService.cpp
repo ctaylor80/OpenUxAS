@@ -326,7 +326,7 @@ double BlockadeTaskService::CalculateCenterBlockingPosition(afrl::cmasi::Locatio
 
         if (veh.len() > enemy.x)
         {
-            blockDist = 0.0; // enemy is closer to base, just make beeline for base
+            blockDist = 1.0; // Still go towards enemy. TODO: enemy is closer to base, just make beeline for base
         }
         else if (q.len() < 10.0)
         {
