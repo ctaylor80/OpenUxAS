@@ -721,7 +721,7 @@ bool BatchSummaryService::AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Loc
         auto lmcpZone = kozID.second->LmcpZone;
         auto epsilon = 1e-3;
         if (config != nullptr && 
-            (lmcpZone->getMaxAltitude() > config->getNominalAltitude() || lmcpZone->getMinAltitude() < config->getNominalAltitude()) &&
+            (lmcpZone->getMinAltitude() > config->getNominalAltitude() || lmcpZone->getMaxAltitude() < config->getNominalAltitude()) &&
             !(abs(lmcpZone->getMaxAltitude()) < epsilon && abs(lmcpZone->getMinAltitude()) < epsilon))
         {
             continue;
