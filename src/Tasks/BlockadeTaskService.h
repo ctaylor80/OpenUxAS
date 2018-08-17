@@ -169,10 +169,8 @@ private:
     processRecievedLmcpMessageDynamicTask(std::shared_ptr<avtas::lmcp::Object>& receivedLmcpObject) override;
 
     virtual std::shared_ptr<afrl::cmasi::Location3D> calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState) override;
-    virtual void buildTaskPlanOptions() override;
     virtual void processMissionCommand(std::shared_ptr<afrl::cmasi::MissionCommand>) override;
 private:
-    bool isCalculateOption(const int64_t& taskId, int64_t& optionId);
 
     std::shared_ptr<afrl::cmasi::VehicleActionCommand> CalculateGimbalActions(const std::shared_ptr<afrl::cmasi::EntityState>& entityState, double lat, double lon);
     double CalculateCenterBlockingPosition(afrl::cmasi::Location3D* vloc, std::shared_ptr<afrl::cmasi::Location3D>& targetLocation, std::shared_ptr<afrl::impact::BlockadeTask>& task);

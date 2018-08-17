@@ -89,10 +89,11 @@ void DynamicTaskServiceBase::buildTaskPlanOptions()
             auto state = m_entityStates[entity];
             auto config = m_entityConfigurations[entity];
             auto targetLocation = calculateTargetLocation(state);
-            if (afrl::cmasi::isAirVehicleConfiguration(config.get()))
+            if (afrl::cmasi::isAirVehicleConfiguration(config.get()) ||
+                afrl::vehicles::isSurfaceVehicleConfiguration(config.get()))
             {
                 auto kozs = getVehicleSpecificKozs(config, 0);
-                auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(config);
+                auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::EntityConfiguration>(config);
                 auto radius = loiterRadiusFromConfig(airVehicleConfig);
                 BatchSummaryService::AttemptMoveOutsideKoz(targetLocation, radius * 1.5, config, kozs);
             }
@@ -110,7 +111,7 @@ void DynamicTaskServiceBase::buildTaskPlanOptions()
         }
     }
 
-    std::string compositionString("+(");
+    std::string compositionString = m_isMultiVehicle ? ".(" : "+(";
     for (auto itOption = m_taskPlanOptions->getOptions().begin(); itOption != m_taskPlanOptions->getOptions().end(); itOption++)
     {
         compositionString += "p";

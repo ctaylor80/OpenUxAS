@@ -57,6 +57,7 @@ protected :
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Location3D>> m_targetLocations;
     std::unordered_map<int64_t, std::shared_ptr<afrl::cmasi::Location3D>> m_targetStarePoints;
     int64_t m_throttle_ms = 3000;
+    bool m_isMultiVehicle = false;
 
 private :
     //methods overriden from TaskServiceBase

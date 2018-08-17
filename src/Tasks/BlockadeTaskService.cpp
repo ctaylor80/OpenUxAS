@@ -63,6 +63,7 @@ BlockadeTaskService::BlockadeTaskService()
 {
     m_taskCompletes = false;
     m_straightLineThreshold_m = 10;
+    m_isMultiVehicle = true;
 };
 
 BlockadeTaskService::~BlockadeTaskService()
@@ -125,88 +126,6 @@ bool BlockadeTaskService::processRecievedLmcpMessageDynamicTask(std::shared_ptr<
     return (false); // always false implies never terminating service from here
 };
 
-void BlockadeTaskService::buildTaskPlanOptions()
-{
-    bool isSuccessful{true};
-
-    // this task enforces option ID equal to vehicle ID
-
-    int64_t taskId(m_blockadeTask->getTaskID());
-
-
-    //        m_speedAltitudeVsEligibleEntitesRequested
-    //        m_blockadeTask->getNumberVehicles();
-    for (auto& eligibleEntitesRequested : m_speedAltitudeVsEligibleEntityIdsRequested)
-    {
-        for (auto& entityId : eligibleEntitesRequested.second)
-        {
-            if (!isCalculateOption(taskId, entityId))
-            {
-                isSuccessful = false;
-            }
-        }
-    }
-
-    size_t N = m_blockadeTask->getNumberVehicles();
-    if (m_speedAltitudeVsEligibleEntityIdsRequested.size() < N)
-    {
-        N = m_speedAltitudeVsEligibleEntityIdsRequested.size();
-    }
-
-    // TODO: efficiently present all combinations/permutations
-    // for now just use all eligible vehicles from automation request
-    std::string compositionString(".(");
-    for (auto& eligibleEntitesRequested : m_speedAltitudeVsEligibleEntityIdsRequested)
-    {
-        for (auto& entityId : eligibleEntitesRequested.second)
-        {
-            compositionString += "p";
-            compositionString += std::to_string(entityId);
-            compositionString += " ";
-        }
-    }
-    compositionString += ")";
-
-    m_taskPlanOptions->setComposition(compositionString);
-
-    // send out the options
-    if (isSuccessful)
-    {
-        auto newResponse = std::static_pointer_cast<avtas::lmcp::Object>(m_taskPlanOptions);
-        sendSharedLmcpObjectBroadcastMessage(newResponse);
-    }
-};
-
-bool BlockadeTaskService::isCalculateOption(const int64_t& taskId, int64_t & optionId)
-{
-    bool isSuccessful{true};
-
-    if (m_blockedEntityStateLast && m_entityStates.find(optionId) != m_entityStates.end())
-    {
-        auto state = m_entityStates[optionId];
-        auto target = calculateTargetLocation(state);
-
-        auto taskOption = new uxas::messages::task::TaskOption;
-        taskOption->getEligibleEntities().push_back(optionId); // note: this task enforces optionId == entityId
-        taskOption->setTaskID(taskId);
-        taskOption->setOptionID(optionId);
-        taskOption->setStartLocation(target->clone());
-        taskOption->setStartHeading(m_blockedEntityStateLast->getHeading());
-        taskOption->setEndLocation(target->clone());
-        taskOption->setEndHeading(m_blockedEntityStateLast->getHeading());
-        auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
-        m_optionIdVsTaskOptionClass.insert(std::make_pair(optionId, std::make_shared<TaskOptionClass>(pTaskOption)));
-        m_taskPlanOptions->getOptions().push_back(taskOption);
-        taskOption = nullptr; //just gave up ownership
-    }
-    else
-    {
-        CERR_FILE_LINE_MSG("ERROR::Task_BlockadeTask:: no blockedEntityState found for Entity[" << m_blockadeTask->getBlockedEntityID() << "]")
-        isSuccessful = false;
-    }
-
-    return (isSuccessful);
-}
 
 std::shared_ptr<afrl::cmasi::Location3D> BlockadeTaskService::calculateTargetLocation(const std::shared_ptr<afrl::cmasi::EntityState> entityState)
 {
