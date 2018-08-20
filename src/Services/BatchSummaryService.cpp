@@ -519,35 +519,7 @@ void BatchSummaryService::UpdateVehicleSummary(afrl::impact::VehicleSummary * ve
 
     double north, east;
     auto config = m_entityConfigs[vehicleSum->getVehicleID()];
-    //check conflicts with ROZ. Assume individual waypoints came from planner and do not conflict. Attached actions might.
-    for (auto wp : vehicleSum->getWaypointList())
-    {
-        for (auto action : wp->getVehicleActionList())
-        {
-            if (afrl::cmasi::isLoiterAction(action))
-            {
-                afrl::cmasi::LoiterAction* loiter = dynamic_cast<afrl::cmasi::LoiterAction*>(action);
-                VisiLibity::Point p;
-                unitConversions.ConvertLatLong_degToNorthEast_m(loiter->getLocation()->getLatitude(), loiter->getLocation()->getLongitude(), north, east);
-                auto length = loiter->getRadius();
-                //assume circular
-                auto locTmp = std::shared_ptr<afrl::cmasi::Location3D>(loiter->getLocation()->clone());
-                
-                //check each zone one at a time to know the conflicting ROZ IDs.
-                for (auto keepOutZonePairIt : m_keepOutZones)
-                {
-                    std::unordered_map<int64_t, std::shared_ptr<ZonePair>> tmp;
-                    tmp[keepOutZonePairIt.second->LmcpZone->getZoneID()] = keepOutZonePairIt.second;
-                    if (AttemptMoveOutsideKoz(locTmp, length, config, tmp))
-                    {
-                        vehicleSum->setConflictsWithROZ(true);
-                        vehicleSum->getROZIDs().push_back(keepOutZonePairIt.second->LmcpZone->getZoneID());
-                    }
-                }
-
-            }
-        }
-    }
+    //TODO: check conflicts with ROZ. Previously taken out because it took too long.
 
     // calculate 'EnergyRemaining'
     vehicleSum->setEnergyRemaining(100.0f);
