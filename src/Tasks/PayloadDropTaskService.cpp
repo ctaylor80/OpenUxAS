@@ -147,15 +147,9 @@ void PayloadDropTaskService::buildTaskPlanOptions()
                     continue;
                 }
                 auto airVehicleConfig = std::dynamic_pointer_cast<afrl::cmasi::AirVehicleConfiguration>(cast);
-                double runway_m = getLevelTurnRadius(airVehicleConfig);
 
-                //auto dropLocation = m_payloadDrop->getDropLocation()->clone();
                 auto BDALocation = m_payloadDrop->getBDALocation()->clone();
-                //unitConversions.ConvertLatLong_degToNorthEast_m(dropLocation->getLatitude(), dropLocation->getLongitude(), dropLocationNorth_m, dropLocationEast_m);
-                //unitConversions.ConvertLatLong_degToNorthEast_m(BDALocation->getLatitude(), BDALocation->getLongitude(), BDALocationNorth_m, BDALocationEast_m);
 
-                //auto dHeadingTarget_rad = n_Const::c_Convert::dPiO2() - atan2(dropLocationNorth_m - BDALocationNorth_m, dropLocationEast_m - BDALocationEast_m);
-                //dHeadingTarget_rad = n_Const::c_Convert::dNormalizeAngleRad((dHeadingTarget_rad + n_Const::c_Convert::dPi()), 0.0) * n_Const::c_Convert::dRadiansToDegrees(); // [0,2PI) 
                 taskOption->setStartHeading(approach);
                 taskOption->setEndHeading(approach);
 
@@ -166,14 +160,7 @@ void PayloadDropTaskService::buildTaskPlanOptions()
                 auto pTaskOption = std::shared_ptr<uxas::messages::task::TaskOption>(taskOption->clone());
                 auto taskOptionClass = std::make_shared<TaskOptionClass>(pTaskOption);
 
-                BDALocationNorth_m += sin(approach) * runway_m;
-                BDALocationEast_m += cos(approach) * runway_m;
 
-                unitConversions.ConvertNorthEast_mToLatLong_deg(BDALocationNorth_m, BDALocationEast_m, DBALocationLat_deg, BDALocationLon_deg);
-
-                auto loiterPoint = new afrl::cmasi::Location3D();
-                loiterPoint->setLatitude(DBALocationLat_deg);
-                loiterPoint->setLongitude(BDALocationLon_deg);
 
                 //add a routePlanRequest
                 auto routePlanRequest = std::make_shared<messages::route::RoutePlanRequest>();
@@ -188,7 +175,7 @@ void PayloadDropTaskService::buildTaskPlanOptions()
                 auto entryConstraint = std::make_shared<messages::route::RouteConstraints>();
                 entryConstraint->setStartLocation(BDALocation->clone());
                 entryConstraint->setStartHeading(approach);
-                entryConstraint->setEndLocation(loiterPoint);
+                entryConstraint->setEndLocation(BDALocation->clone());
                 entryConstraint->setEndHeading(approach);
 
                 routePlanRequest->getRouteRequests().push_back(entryConstraint->clone());
@@ -297,7 +284,6 @@ double PayloadDropTaskService::getLevelTurnRadius(std::shared_ptr<afrl::cmasi::A
     double turnRadius_m = (dTanMaxBankAngle <= 0.0) ? (0.0) : (pow((nominalSpeed_mps), 2) / (n_Const::c_Convert::dGravity_mps2() * dTanMaxBankAngle));
     return turnRadius_m * m_radiusBufferMultiplier;
 }
-
 
 }; //namespace task
 }; //namespace service
