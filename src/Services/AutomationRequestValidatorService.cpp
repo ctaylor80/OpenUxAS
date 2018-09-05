@@ -533,18 +533,35 @@ void AutomationRequestValidatorService::sendNextRequest()
         uxas::common::TimerManager::getInstance().disableTimer(m_responseTimerId,0);
         return;
     }
-    
+
     auto uniqueAutomationRequest = m_pendingRequests.front();
 
-    //double check that tasks exist.
-    if (!std::all_of(uniqueAutomationRequest->getOriginalRequest()->getTaskList().begin(),
-        uniqueAutomationRequest->getOriginalRequest()->getTaskList().end(),
-        [&](const int64_t task) {return m_availableInitializedTasks.find(task) != m_availableInitializedTasks.end(); }))
+    //double check that tasks still exist.
+    while (!m_pendingRequests.empty())
     {
-        m_pendingRequests.pop_front();
-        sendResponseError(uniqueAutomationRequest, "Tasks were killed");
-        sendNextRequest();
-        return;
+        uniqueAutomationRequest = m_pendingRequests.front();
+
+        if (!std::all_of(uniqueAutomationRequest->getOriginalRequest()->getTaskList().begin(),
+            uniqueAutomationRequest->getOriginalRequest()->getTaskList().end(),
+            [&](const int64_t task) {return m_availableInitializedTasks.find(task) != m_availableInitializedTasks.end(); }))
+        {
+            m_pendingRequests.pop_front();
+            sendResponseError(uniqueAutomationRequest, "Tasks were killed");
+            if (!m_pendingRequests.empty())
+            {
+                uniqueAutomationRequest = m_pendingRequests.front();
+            }
+            else
+            {
+                // no other requests in queue, disable timer
+                uxas::common::TimerManager::getInstance().disableTimer(m_responseTimerId, 0);
+                return;
+            }
+        }
+        else
+        {
+            break;
+        }
     }
 
     sendSharedLmcpObjectBroadcastMessage(uniqueAutomationRequest);
