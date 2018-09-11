@@ -544,6 +544,7 @@ void RouteAggregatorService::SendMatrix(int64_t autoKey)
     matrix->getTaskList().assign(areq->getOriginalRequest()->getTaskList().begin(), areq->getOriginalRequest()->getTaskList().end());
 
     std::stringstream routesNotFound;
+    std::unordered_map<int64_t, int64_t> entityVsRoutesNotFoundCount;
     for (auto& rId : m_pendingAutoReq[autoKey])
     {
         auto plan = m_routePlans.find(rId);
@@ -554,7 +555,7 @@ void RouteAggregatorService::SendMatrix(int64_t autoKey)
             {
                 if (plan->second.second->getRouteCost() < 0)
                 {
-                    routesNotFound << "V[" << taskpair->second->vehicleId << "](" << taskpair->second->prevTaskId << "," << taskpair->second->prevTaskOption << ")-(" << taskpair->second->taskId << "," << taskpair->second->taskOption << ")" << std::endl;
+                    entityVsRoutesNotFoundCount[taskpair->second->vehicleId] += 1;
                 }
                 auto toc = new uxas::messages::task::TaskOptionCost;
                 toc->setDestinationTaskID(taskpair->second->taskId);
@@ -571,6 +572,15 @@ void RouteAggregatorService::SendMatrix(int64_t autoKey)
             m_routePlanResponses.erase(plan->second.first);
             m_routePlans.erase(plan);
         }
+    }
+
+    if (!entityVsRoutesNotFoundCount.empty())
+    {
+        routesNotFound << "RoutesNotFound. ";
+    }
+    for (auto iter : entityVsRoutesNotFoundCount)
+    {
+        routesNotFound << "Entity " << iter.first << "[" << iter.second << "]";
     }
 
     // send the total cost matrix
@@ -590,7 +600,7 @@ void RouteAggregatorService::SendMatrix(int64_t autoKey)
         serviceStatus->getInfo().push_back(keyValuePair);
         keyValuePair = nullptr;
         sendSharedLmcpObjectBroadcastMessage(serviceStatus);
-        std::cout << "RoutesNotFound - [VehicleId](StartTaskId,StartOptionId)-(EndTaskId,EndOptionId) :: " << std::endl << routesNotFound.str() << std::endl << std::endl;
+        IMPACT_INFORM(routesNotFound.str());
     }
     else
     {
