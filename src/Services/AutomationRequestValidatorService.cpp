@@ -235,10 +235,18 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                         sendResponseError(toFlush, "Manually flushed.");
                         count += 1;
                     }
+                    while (!m_requestsWaitingForTasks.empty())
+                    {
+                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> toFlush = m_requestsWaitingForTasks.front();
+                        m_requestsWaitingForTasks.pop_front();
+
+                        sendResponseError(toFlush, "Manually flushed.");
+                        count += 1;
+                    }
                     IMPACT_INFORM("Manually flushed ", count, " waiting requests");
 
-                    m_pendingRequests.clear();
-                    m_requestsWaitingForTasks.clear();
+                    uxas::common::TimerManager::getInstance().disableTimer(m_taskInitTimerId, 0);
+                    uxas::common::TimerManager::getInstance().disableTimer(m_responseTimerId, 0);
                 }
                 if (kv->getKey().compare("No UniqueAutomationResponse") == 0)
                 {
