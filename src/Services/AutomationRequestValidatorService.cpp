@@ -225,28 +225,7 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
             {
                 if (kv->getKey().compare("flush validator") == 0)
                 {
-                    //send a flush failure for each request in the pipeline.
-                    auto count = 0;
-                    while (!m_pendingRequests.empty())
-                    {
-                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> toFlush = m_pendingRequests.front();
-                        m_pendingRequests.pop_front();
-
-                        sendResponseError(toFlush, "Manually flushed.");
-                        count += 1;
-                    }
-                    while (!m_requestsWaitingForTasks.empty())
-                    {
-                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> toFlush = m_requestsWaitingForTasks.front();
-                        m_requestsWaitingForTasks.pop_front();
-
-                        sendResponseError(toFlush, "Manually flushed.");
-                        count += 1;
-                    }
-                    IMPACT_INFORM("Manually flushed ", count, " waiting requests");
-
-                    uxas::common::TimerManager::getInstance().disableTimer(m_taskInitTimerId, 0);
-                    uxas::common::TimerManager::getInstance().disableTimer(m_responseTimerId, 0);
+                    flushRequests();
                 }
                 if (kv->getKey().compare("No UniqueAutomationResponse") == 0)
                 {
@@ -259,6 +238,13 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                         if (kv->getValue().compare("Timeout.") == 0)
                         {
                             m_timedOutRequests.insert(id);
+                            m_consecutiveTimeouts += 1;
+                            if (m_consecutiveTimeouts >= 3)
+                            {
+                                IMPACT_INFORM("Detected consecutive timeouts from a likely timeout loop. Flushing everything");
+                                flushRequests();
+                                return false;
+                            }
                         }
 
                         sendResponseError(failedRequest, kv->getValue());
@@ -456,6 +442,7 @@ void AutomationRequestValidatorService::HandleAutomationResponse(std::shared_ptr
             }
 
         }
+        m_consecutiveTimeouts = 0;
         m_sandboxMap.erase(resp->getResponseID());
         m_pendingRequests.pop_front();
         sendNextRequest();
@@ -849,6 +836,33 @@ bool AutomationRequestValidatorService::isCheckAutomationRequestRequirements(con
 
     return (isReady);
 }
+
+void AutomationRequestValidatorService::flushRequests()
+{
+    //send a flush failure for each request in the pipeline. This should basically reset the service.
+    auto count = 0;
+    while (!m_pendingRequests.empty())
+    {
+        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> toFlush = m_pendingRequests.front();
+        m_pendingRequests.pop_front();
+
+        sendResponseError(toFlush, "Manually flushed.");
+        count += 1;
+    }
+    while (!m_requestsWaitingForTasks.empty())
+    {
+        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> toFlush = m_requestsWaitingForTasks.front();
+        m_requestsWaitingForTasks.pop_front();
+
+        sendResponseError(toFlush, "Manually flushed.");
+        count += 1;
+    }
+    IMPACT_INFORM("Manually flushed ", count, " waiting requests");
+
+    uxas::common::TimerManager::getInstance().disableTimer(m_taskInitTimerId, 0);
+    uxas::common::TimerManager::getInstance().disableTimer(m_responseTimerId, 0);
+}
+    
 std::string AutomationRequestValidatorService::generateDescription(std::vector<int64_t> vehicles, std::vector<int64_t> tasks) {
     std::string vehiclesDesc = "[";
     for (auto vehicle : vehicles)

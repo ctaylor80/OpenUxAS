@@ -176,6 +176,7 @@ private:
     void checkTasksInitialized();
     void sendResponseError(std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> errorRequest, std::string errStr);
     void sendNextRequest();
+    void flushRequests();
     std::string generateDescription(std::vector<int64_t> vehicles, std::vector<int64_t> tasks);
 
     /*! \brief  this timer is used to track time for the system to respond to automation requests */
@@ -186,6 +187,7 @@ private:
     /*! \brief  parameter indicating the maximum time to wait for a response (in ms)*/
     uint32_t m_maxResponseTime_ms = {5000}; // default: 5000 ms
 
+    uint32_t m_consecutiveTimeouts = 0;
     enum AutomationRequestType
     {
         AUTOMATION_REQUEST,
