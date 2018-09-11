@@ -244,12 +244,16 @@ AutomationRequestValidatorService::processReceivedLmcpMessage(std::unique_ptr<ux
                 {
                     if (!m_pendingRequests.empty())
                     {
-                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> timedOut = m_pendingRequests.front();
+                        std::shared_ptr<uxas::messages::task::UniqueAutomationRequest> failedRequest = m_pendingRequests.front();
                         m_pendingRequests.pop_front();
+                        auto id = failedRequest->getRequestID();
 
-                        auto id = timedOut->getRequestID();
-                        m_timedOutRequests.insert(id);
-                        sendResponseError(timedOut, kv->getValue());
+                        if (kv->getValue().compare("Timeout.") == 0)
+                        {
+                            m_timedOutRequests.insert(id);
+                        }
+
+                        sendResponseError(failedRequest, kv->getValue());
                         sendNextRequest();
                     }
                     else
