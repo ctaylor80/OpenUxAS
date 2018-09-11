@@ -356,6 +356,7 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
 std::shared_ptr<afrl::cmasi::VehicleActionCommand> DynamicTaskServiceBase::calculateGimbalStareAction(const std::shared_ptr<afrl::cmasi::EntityConfiguration>& config, const std::shared_ptr<afrl::cmasi::Location3D> loc)
     {
         auto vehicleActionCommand = std::make_shared<afrl::cmasi::VehicleActionCommand>();
+        vehicleActionCommand->setVehicleID(config->getID());
 
         for (auto payloadConfig : config->getPayloadConfigurationList())
         {
