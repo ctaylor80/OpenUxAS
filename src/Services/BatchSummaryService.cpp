@@ -88,6 +88,9 @@ bool
 
     addSubscriptionAddress(afrl::impact::AngledAreaSearchTask::Subscription);
     addSubscriptionAddress(afrl::impact::AreaOfInterest::Subscription);
+
+    addSubscriptionAddress(afrl::impact::ImpactLineSearchTask::Subscription);
+    addSubscriptionAddress(afrl::impact::LineOfInterest::Subscription);
     return true; // may not have the proper fast plan value, but proceed anyway
 }
 
@@ -148,16 +151,33 @@ bool BatchSummaryService::processReceivedLmcpMessage(std::unique_ptr<uxas::commu
        else if (afrl::impact::isAngledAreaSearchTask(receivedLmcpMessage->m_object))
        {
            auto areaTask = std::static_pointer_cast<afrl::impact::AngledAreaSearchTask>(receivedLmcpMessage->m_object);
-           m_AngledAreaSearchTaskIdToAreaOfInterest[areaTask->getTaskID()] = areaTask->getSearchAreaID();
+           m_taskIdToCacheId[areaTask->getTaskID()] = areaTask->getSearchAreaID();
        }
        else if (afrl::impact::isAreaOfInterest(receivedLmcpMessage->m_object))
        {
            auto areaOfInterest = std::static_pointer_cast<afrl::impact::AreaOfInterest>(receivedLmcpMessage->m_object);
            auto id = areaOfInterest->getAreaID();
-           for (auto it = m_AngledAreaSearchTaskIdToAreaOfInterest.begin(); it != m_AngledAreaSearchTaskIdToAreaOfInterest.end();)
+           for (auto it = m_taskIdToCacheId.begin(); it != m_taskIdToCacheId.end();)
            {
                if (it->second == id)
-                   it = m_AngledAreaSearchTaskIdToAreaOfInterest.erase(it);
+                   it = m_taskIdToCacheId.erase(it);
+               else
+                   ++it;
+           }
+       }
+       else if (afrl::impact::isImpactLineSearchTask(receivedLmcpMessage->m_object))
+       {
+           auto lineTask = std::static_pointer_cast<afrl::impact::ImpactLineSearchTask>(receivedLmcpMessage->m_object);
+           m_taskIdToCacheId[lineTask->getTaskID()] = lineTask->getLineID();
+       }
+       else if (afrl::impact::isLineOfInterest(receivedLmcpMessage->m_object))
+       {
+           auto lineOfInterest = std::static_pointer_cast<afrl::impact::LineOfInterest>(receivedLmcpMessage->m_object);
+           auto id = lineOfInterest->getLineID();
+           for (auto it = m_taskIdToCacheId.begin(); it != m_taskIdToCacheId.end();)
+           {
+               if (it->second == id)
+                   it = m_taskIdToCacheId.erase(it);
                else
                    ++it;
            }
@@ -234,13 +254,13 @@ bool BatchSummaryService::FinalizeBatchRequest(int64_t responseId)
             {
                 continue;
             }
-            if (m_AngledAreaSearchTaskIdToAreaOfInterest.find(vehicleSummary->getInitialTaskID()) != m_AngledAreaSearchTaskIdToAreaOfInterest.end() && 
-                m_AngledAreaSearchTaskIdToAreaOfInterest.find(vehicleSummary->getDestinationTaskID()) != m_AngledAreaSearchTaskIdToAreaOfInterest.end() )
+            if (m_taskIdToCacheId.find(vehicleSummary->getInitialTaskID()) != m_taskIdToCacheId.end() &&
+                m_taskIdToCacheId.find(vehicleSummary->getDestinationTaskID()) != m_taskIdToCacheId.end() )
             {
-                auto key = std::make_tuple(vehicleSummary->getVehicleID(), m_AngledAreaSearchTaskIdToAreaOfInterest[vehicleSummary->getInitialTaskID()], m_AngledAreaSearchTaskIdToAreaOfInterest[vehicleSummary->getDestinationTaskID()]);
-                if (m_vehicleWithAreasToVehicleSummary.find(key) == m_vehicleWithAreasToVehicleSummary.end())
+                auto key = std::make_tuple(vehicleSummary->getVehicleID(), m_taskIdToCacheId[vehicleSummary->getInitialTaskID()], m_taskIdToCacheId[vehicleSummary->getDestinationTaskID()]);
+                if (m_vehicleWithCacheIdsToVehicleSummary.find(key) == m_vehicleWithCacheIdsToVehicleSummary.end())
                 {
-                    m_vehicleWithAreasToVehicleSummary[key] = std::shared_ptr<afrl::impact::VehicleSummary>(vehicleSummary->clone());
+                    m_vehicleWithCacheIdsToVehicleSummary[key] = std::shared_ptr<afrl::impact::VehicleSummary>(vehicleSummary->clone());
                 }
             }
 
@@ -342,13 +362,13 @@ void BatchSummaryService::HandleBatchSummaryRequest(std::shared_ptr<afrl::impact
 
                     //check cache
                     std::shared_ptr<afrl::impact::VehicleSummary> summaryTaskToTask = nullptr;
-                    if (m_AngledAreaSearchTaskIdToAreaOfInterest.find(taski) != m_AngledAreaSearchTaskIdToAreaOfInterest.end() &&
-                        m_AngledAreaSearchTaskIdToAreaOfInterest.find(taskj) != m_AngledAreaSearchTaskIdToAreaOfInterest.end())
+                    if (m_taskIdToCacheId.find(taski) != m_taskIdToCacheId.end() &&
+                        m_taskIdToCacheId.find(taskj) != m_taskIdToCacheId.end())
                     {
-                        auto key = std::make_tuple(vehicle, m_AngledAreaSearchTaskIdToAreaOfInterest[taski], m_AngledAreaSearchTaskIdToAreaOfInterest[taskj]);
-                        if (m_vehicleWithAreasToVehicleSummary.find(key) != m_vehicleWithAreasToVehicleSummary.end())
+                        auto key = std::make_tuple(vehicle, m_taskIdToCacheId[taski], m_taskIdToCacheId[taskj]);
+                        if (m_vehicleWithCacheIdsToVehicleSummary.find(key) != m_vehicleWithCacheIdsToVehicleSummary.end())
                         {
-                            summaryTaskToTask = std::shared_ptr<afrl::impact::VehicleSummary>(m_vehicleWithAreasToVehicleSummary[key]->clone());
+                            summaryTaskToTask = std::shared_ptr<afrl::impact::VehicleSummary>(m_vehicleWithCacheIdsToVehicleSummary[key]->clone());
                             summaryTaskToTask->setInitialTaskID(taski);
                             summaryTaskToTask->setDestinationTaskID(taskj);
                             summariesFromCacheCount += 1;
@@ -372,12 +392,14 @@ void BatchSummaryService::HandleBatchSummaryRequest(std::shared_ptr<afrl::impact
                     }
 
                 }
-                //Always send individual vehicle to task times in case some tasks can't be completed.
-                auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
-                automationRequest->getTaskList().push_back(taski);
-                automationRequest->getEntityList().push_back(vehicle);
-                requests.push_back(automationRequest);
-
+                if (taskiRequestCount == 0)
+                {
+                    //Always send individual vehicle to task times in case some tasks can't be completed.
+                    auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
+                    automationRequest->getTaskList().push_back(taski);
+                    automationRequest->getEntityList().push_back(vehicle);
+                    requests.push_back(automationRequest);
+                }
             }
 
         }

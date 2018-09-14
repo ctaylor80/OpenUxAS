@@ -158,8 +158,8 @@ namespace uxas
             std::unordered_map<int64_t, std::shared_ptr<ZonePair> > m_keepOutZones;
 
 
-            std::unordered_map<std::tuple<int64_t, int64_t, int64_t>, std::shared_ptr<afrl::impact::VehicleSummary>, TupleHashInt64> m_vehicleWithAreasToVehicleSummary;
-            std::unordered_map<int64_t, int64_t> m_AngledAreaSearchTaskIdToAreaOfInterest;
+            std::unordered_map<std::tuple<int64_t, int64_t, int64_t>, std::shared_ptr<afrl::impact::VehicleSummary>, TupleHashInt64> m_vehicleWithCacheIdsToVehicleSummary;
+            std::unordered_map<int64_t, int64_t> m_taskIdToCacheId;
         };
 
     }; //namespace service
