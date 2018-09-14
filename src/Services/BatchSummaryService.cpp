@@ -372,14 +372,11 @@ void BatchSummaryService::HandleBatchSummaryRequest(std::shared_ptr<afrl::impact
                     }
 
                 }
-                //check if we still need a request to calculate vehicle to tasks times. 
-                if (taskiRequestCount == 0)
-                {
-                    auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
-                    automationRequest->getTaskList().push_back(taski);
-                    automationRequest->getEntityList().push_back(vehicle);
-                    requests.push_back(automationRequest);
-                }
+                //Always send individual vehicle to task times in case some tasks can't be completed.
+                auto automationRequest = std::make_shared<afrl::cmasi::AutomationRequest>();
+                automationRequest->getTaskList().push_back(taski);
+                automationRequest->getEntityList().push_back(vehicle);
+                requests.push_back(automationRequest);
 
             }
 
