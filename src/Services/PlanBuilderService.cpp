@@ -348,7 +348,8 @@ void PlanBuilderService::processTaskImplementationResponse(const std::shared_ptr
     if(m_expectedResponseID.find(taskImplementationResponse->getResponseID()) == m_expectedResponseID.end())
         return;
     int64_t uniqueRequestID = m_expectedResponseID[taskImplementationResponse->getResponseID()];
-    
+
+    m_expectedResponseID.erase(taskImplementationResponse->getResponseID());
     // cache response (waypoints in m_inProgressResponse)
     if(m_inProgressResponse.find(uniqueRequestID) == m_inProgressResponse.end())
         return;
@@ -518,8 +519,13 @@ void PlanBuilderService::sendUniqueAutomationResponse(int64_t uniqueRequestID)
     auto response = m_inProgressResponse[uniqueRequestID];
 
     sendSharedLmcpObjectBroadcastMessage(response);
+    //TODO: clean things up when there is no unique automation response (assignment failed).
     m_inProgressResponse.erase(uniqueRequestID);
     m_reqeustIDVsOverrides.erase(uniqueRequestID);
+    m_uniqueAutomationRequests.erase(uniqueRequestID);
+    m_assignmentSummaries.erase(uniqueRequestID);
+    m_projectedEntityStates.erase(uniqueRequestID);
+    m_remainingAssignments.erase(uniqueRequestID);
 
     auto serviceStatus = std::make_shared<afrl::cmasi::ServiceStatus>();
     serviceStatus->setStatusType(afrl::cmasi::ServiceStatusType::Information);
