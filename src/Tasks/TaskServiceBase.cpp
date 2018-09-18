@@ -816,6 +816,8 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                     (itTaskImplementationRequest != m_routeIdVsTaskImplementationRequest.end()))
             {
                 itTaskOptionClass->second->m_firstTaskActiveWaypointID = -1;
+
+                bool evenFailure = true;
                 for (auto routePlan : routePlanResponse->getRouteResponses())
                 {
                     if (itTaskOptionClass->second->m_pendingRouteIds.find(routePlan->getRouteID()) != itTaskOptionClass->second->m_pendingRouteIds.end())
@@ -838,6 +840,16 @@ void TaskServiceBase::processImplementationRoutePlanResponseBase(const std::shar
                             // update total task cost to include en-route time
                             itTaskOptionClass->second->m_taskOption->setCost(totalCost);
                         }
+
+                        // even/odd logic to avoid stitching route constraints inside KOZs.
+                        if (routePlan->getRouteCost() < 0)
+                        {
+                            evenFailure ^= true;
+                            continue;
+                        }
+                        if (!evenFailure && !itTaskOptionClass->second->m_pendingRouteIds.empty())
+                            continue;
+
                         /////////////////////////////////////////////////////////////////////////////////////////////////////
                         auto pRoutePlan = std::shared_ptr<uxas::messages::route::RoutePlan>(routePlan->clone());
                         itTaskOptionClass->second->m_orderedRouteIdVsPlan[routePlan->getRouteID()] = pRoutePlan;
