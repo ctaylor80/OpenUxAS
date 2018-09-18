@@ -269,7 +269,8 @@ void AngledAreaSearchTaskService::buildTaskPlanOptions()
     sensorFootprintRequests->setRequestID(m_task->getTaskID());
     for (auto itEligibleEntities = m_speedAltitudeVsEligibleEntityIdsRequested.begin(); itEligibleEntities != m_speedAltitudeVsEligibleEntityIdsRequested.end(); itEligibleEntities++)
     {
-        auto elevationCurrent_rad = -60.0 * n_Const::c_Convert::dDegreesToRadians();
+        //TODO: make configurable?
+        auto elevationCurrent_rad = -80.0 * n_Const::c_Convert::dDegreesToRadians();
         auto headingCurrent_rad = n_Const::c_Convert::dNormalizeAngleRad((m_angledAreaSearchTask->getSweepAngle() * n_Const::c_Convert::dDegreesToRadians()), 0.0);
     
         for (auto entity : itEligibleEntities->second)
