@@ -366,6 +366,13 @@ bool ImpactPointSearchTaskService::isProcessTaskImplementationRouteResponse(std:
                 taskImplementationResponse->getTaskWaypoints().push_back(newFinalWp);
                 finalWaypoint = newFinalWp;
             }
+
+            if (m_entityConfigurations.find(taskImplementationResponse.get()->getVehicleID()) != m_entityConfigurations.end())
+            {
+                auto config = m_entityConfigurations[taskImplementationResponse.get()->getVehicleID()];
+                action->setAirspeed(config->getNominalSpeed());
+            }
+
             action->getLocation()->setAltitude(finalWaypoint->getAltitude());
             finalWaypoint->getVehicleActionList().push_back(action->clone());
             finalWaypoint->setTurnType(afrl::cmasi::TurnType::TurnShort);
