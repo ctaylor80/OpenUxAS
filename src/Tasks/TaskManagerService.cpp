@@ -457,18 +457,16 @@ TaskManagerService::processReceivedLmcpMessage(std::unique_ptr<uxas::communicati
                     m_TaskIdVsServiceId.erase(itServiceId);
                     UXAS_LOG_INFORM("Removed Task[" << *itTaskId << "]")
                 }
-                else
-                {
-                    CERR_FILE_LINE_MSG("ERROR:: Tried to kill service, but could not find ServiceId for TaskId[" << *itTaskId << "]")
-                }
         }
+        int64_t removeCount = countBefore - m_TaskIdVsServiceId.size();
+        int64_t notFoundCount = removeTasks->getTaskList().size() - removeCount;
         std::string taskList = "[";
         for (auto taskID : removeTasks->getTaskList())
         {
             taskList += std::to_string(taskID) + " ";
         }
         taskList += "]";
-        IMPACT_INFORM("Removed ", countBefore - m_TaskIdVsServiceId.size(), " tasks containing ", taskList, ". ", m_TaskIdVsServiceId.size(), " Still Exist.");
+        IMPACT_INFORM("Removed ", removeCount, " tasks containing ", taskList, ". ", m_TaskIdVsServiceId.size(), " Still Exist. ", notFoundCount, " not found");
     }
     else
     {
