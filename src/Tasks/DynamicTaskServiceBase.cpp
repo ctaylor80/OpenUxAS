@@ -175,7 +175,7 @@ bool DynamicTaskServiceBase::processReceivedLmcpMessageTask(std::shared_ptr<avta
 
                 for (auto gimbalAction : gimbalActions->getVehicleActionList())
                 {
-                    firstWaypoint->getVehicleActionList().push_back(gimbalAction->clone());
+                    mish->getVehicleActionList().push_back(gimbalAction->clone());
                 }
                 for (auto loiterAction : loiterActions->getVehicleActionList())
                 {
