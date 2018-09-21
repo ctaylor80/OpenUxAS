@@ -1163,8 +1163,8 @@ std::shared_ptr<OsmPlannerService::s_roadNetworkContainer> OsmPlannerService::is
             }
 
             // build the map of cells to nodes
-            ret->m_PositionToCellFactorNorth_m = 100;
-            ret->m_PositionToCellFactorEast_m = 100;
+            ret->m_PositionToCellFactorNorth_m = 10;
+            ret->m_PositionToCellFactorEast_m = 10;
 
             // ALL NODES
             for (auto itNode = ret->m_idVsNode->begin(); itNode != ret->m_idVsNode->end(); itNode++)
@@ -1613,6 +1613,8 @@ bool OsmPlannerService::isFindClosestNodeId(const n_FrameworkLib::CPosition& pos
     int32_t North_m = static_cast<int32_t> (position.m_north_m) / network->m_PositionToCellFactorNorth_m;
     int32_t East_m = static_cast<int32_t> (position.m_east_m) / network->m_PositionToCellFactorEast_m;
 
+    //sides of square to search
+    int64_t maxLength_m = 100;
     int32_t numberIterations(0);
     bool isFinished(false);
     while (!isFinished)
@@ -1628,7 +1630,8 @@ bool OsmPlannerService::isFindClosestNodeId(const n_FrameworkLib::CPosition& pos
             isFinished = true; // found the closest node
         }
         numberIterations++;
-        if (numberIterations > 10) // 1km square
+        //note: assuming east factor is the same as north.
+        if (network->m_PositionToCellFactorEast_m * numberIterations >= maxLength_m)
         {
             isFinished = true;
         }
