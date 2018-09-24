@@ -38,6 +38,7 @@
 #include <sstream>      //std::stringstream
 #include <iostream>     // std::cout, cerr, etc
 #include <iomanip>  //setfill
+#include <afrl/vehicles/GroundVehicleConfiguration.h>
 
 #define STRING_XML_LINE_SEARCH_ONE_DIRECTION "LineSearchOneDirection"
 
@@ -310,7 +311,24 @@ bool ImpactLineSearchTaskService::isCalculateOption(const int64_t& taskId, const
             dLengthRoad += itPointSecond->dist(*itPointFirst);
         }
 
+
         int32_t maxNumberWaypointsPoints = static_cast<int32_t> (dLengthRoad / 50.0); // 50 meter segments
+
+        // closer points for ground vehicles.
+        if (std::all_of(eligibleEntities.begin(), eligibleEntities.end(), [&](int64_t vehicle)
+        {
+            auto config = m_entityConfigurations.find(vehicle);
+            if (config == m_entityConfigurations.end())
+                return false;
+            auto cast = static_cast<std::shared_ptr<avtas::lmcp::Object>>(config->second);
+            return afrl::vehicles::isGroundVehicleConfiguration(cast);
+        }))
+        {
+            maxNumberWaypointsPoints = static_cast<int32_t> (dLengthRoad / 5.0);
+        }
+
+
+
         maxNumberWaypointsPoints = (maxNumberWaypointsPoints < 2) ? (2) : (maxNumberWaypointsPoints); // need at least two points
 
         // first reset the Dpss
