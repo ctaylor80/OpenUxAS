@@ -95,7 +95,7 @@ void DynamicTaskServiceBase::buildTaskPlanOptions()
                 auto kozs = getVehicleSpecificKozs(config, 0);
                 auto airVehicleConfig = std::static_pointer_cast<afrl::cmasi::EntityConfiguration>(config);
                 auto radius = loiterRadiusFromConfig(airVehicleConfig);
-                BatchSummaryService::AttemptMoveOutsideKoz(targetLocation, radius * 1.5, config, kozs);
+                BatchSummaryService::AttemptMoveOutsideKozIterate(targetLocation, radius * 1.5, config, kozs);
             }
             auto taskOption = new uxas::messages::task::TaskOption;
             taskOption->setTaskID(taskId);
@@ -294,7 +294,7 @@ void DynamicTaskServiceBase::activeEntityState(const std::shared_ptr<afrl::cmasi
 
             //TODO: check operating region
             auto kozs = getVehicleSpecificKozs(config, 0);
-            BatchSummaryService::AttemptMoveOutsideKoz(loc, loiterRadius * bufferMultiplier, config, kozs);
+            BatchSummaryService::AttemptMoveOutsideKozIterate(loc, loiterRadius * bufferMultiplier, config, kozs);
         }
 
         m_targetLocations[entityState->getID()] = loc;

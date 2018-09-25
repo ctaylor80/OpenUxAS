@@ -741,30 +741,29 @@ bool BatchSummaryService::AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Loc
         }
         afrl::cmasi::Polygon *poly = new afrl::cmasi::Polygon();
         auto length = offset;
+        auto loiterIntersections = 0;
+        VisiLibity::Point v(0,0);
         for (double rad = 0; rad < n_Const::c_Convert::dTwoPi(); rad += n_Const::c_Convert::dPiO10())
         {
-            double lat_deg, lon_deg;
-
-            unitConversions.ConvertNorthEast_mToLatLong_deg(north + length * sin(rad), east + length * cos(rad), lat_deg, lon_deg);
-            auto loc = new afrl::cmasi::Location3D();
-            loc->setLatitude(lat_deg);
-            loc->setLongitude(lon_deg);
-            poly->getBoundaryPoints().push_back(loc);
+            VisiLibity::Point p;
+            p.set_x(east + length * cos(rad));
+            p.set_y(north + length * sin(rad));
+            if (p.in(*koz->VisiLibityZone))
+            {
+                loiterIntersections += 1;
+                //move the location outside the koz
+                auto bounderyPoint = p.projection_onto_boundary_of(*koz->VisiLibityZone);
+                v = v + bounderyPoint;
+            }
         }
-        auto loiterArea = BatchSummaryService::FromAbstractGeometry(poly);
-
-        //check if loiter intersects the perimiter of the koz case
-        if (loiterArea->n() > 0 && koz->VisiLibityZone->n() > 0 &&
-            boundary_distance(*loiterArea, *koz->VisiLibityZone) < .1)
+        if (loiterIntersections > 0)
         {
-            //move the location outside the koz
-            auto bounderyPoint = p.projection_onto_boundary_of(*koz->VisiLibityZone);
-            //the loiter center point is outside of the koz because of the checks above
-            auto vector = VisiLibity::Point::normalize(p - bounderyPoint) * offset;
-            newEnd = bounderyPoint + vector;
             newEndSet = true;
 
-            break;
+
+            v = v * (1.0 / loiterIntersections); //division operator not supported in VisiLibity::Point
+            auto vector = VisiLibity::Point::normalize(p - v) * offset;
+            newEnd = v + vector;
         }
     }
     if (newEndSet)
@@ -779,6 +778,24 @@ bool BatchSummaryService::AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Loc
     return false;
 }
 
+bool BatchSummaryService::AttemptMoveOutsideKozIterate(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, std::shared_ptr<afrl::cmasi::EntityConfiguration> config, std::unordered_map < int64_t, std::shared_ptr< BatchSummaryService::ZonePair > > kozPairs)
+{
+    auto maxIterations = 20;
+
+    auto iterations = 0;
+    auto fudge = .999;
+    while(AttemptMoveOutsideKoz(loc, offset * fudge, config, kozPairs))
+    {
+        iterations += 1;
+        fudge *= .999;
+        if (iterations >= maxIterations)
+        {
+            return false;
+        }
+
+    }
+    return true;
+}
 
 std::shared_ptr<VisiLibity::Polygon> BatchSummaryService::FromAbstractGeometry(afrl::cmasi::AbstractGeometry *geom)
 {

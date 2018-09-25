@@ -232,7 +232,7 @@ bool ImpactPointSearchTaskService::isCalculateOption(const int64_t entityID, con
     auto config = m_entityConfigurations.find(entityID) != m_entityConfigurations.end() ? m_entityConfigurations[entityID] : nullptr;
     if (!afrl::vehicles::isGroundVehicleConfiguration(config.get()))
     {
-      if (BatchSummaryService::AttemptMoveOutsideKoz(tmpLoc, m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier, config, m_KeepOutZoneIDVsPolygon))
+      if (BatchSummaryService::AttemptMoveOutsideKozIterate(tmpLoc, m_pointSearchTask->getDesiredAction()->getRadius() * bufferMultiplier, config, m_KeepOutZoneIDVsPolygon))
       {
         UXAS_LOG_WARN("ImpactPointSearchTask Loiter Inside of KeepOutZone. Attempted to move point.");
         m_pointSearchTask->getDesiredAction()->setLocation(tmpLoc->clone());

@@ -88,6 +88,7 @@ namespace uxas
             static std::shared_ptr<VisiLibity::Polygon> FromAbstractGeometry(afrl::cmasi::AbstractGeometry* geom);
             static bool LinearizeBoundary(afrl::cmasi::AbstractGeometry* boundary, std::shared_ptr<VisiLibity::Polygon>& poly);
             static bool AttemptMoveOutsideKoz(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, std::shared_ptr<afrl::cmasi::EntityConfiguration> config, std::unordered_map < int64_t, std::shared_ptr< BatchSummaryService::ZonePair > > KozPairs);
+            static bool AttemptMoveOutsideKozIterate(std::shared_ptr<afrl::cmasi::Location3D>& loc, double offset, std::shared_ptr<afrl::cmasi::EntityConfiguration> config, std::unordered_map < int64_t, std::shared_ptr< BatchSummaryService::ZonePair > > KozPairs);
 
         private:
 
